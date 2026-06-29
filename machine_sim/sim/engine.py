@@ -64,7 +64,8 @@ class SimEngine:
         # Phase 2: Unit sensing
         for unit in self.units:
             if unit.is_active:
-                readings = self.world.sense(unit.position, unit.sensor_range)
+                readings = self.world.sense(unit.position, unit.sensor_range,
+                                           exclude_unit_id=unit.unit_id)
                 unit.receive_observations(readings, self.tick_count)
 
         # Phase 3: Unit decision + action

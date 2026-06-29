@@ -130,3 +130,34 @@ Total events: 1379
 ## Next Recommended Milestone
 
 Milestone 3: Non-Semantic Signaling — bit-pattern emission/detection, signal correlation, coordination primitives.
+
+---
+
+## Milestone 2A Correction Notes
+
+### What Was Fixed
+
+1. **Self excluded from proximity sensing**
+   - `World.sense()` now accepts `exclude_unit_id` parameter
+   - Engine sensing and SCAN action both exclude the scanning unit itself
+   - Unit no longer sees itself as a "nearby unit"
+
+2. **Movement strictly adjacent**
+   - `_move()` now rejects non-adjacent targets (distance > 1 in any axis)
+   - Self-move (same cell) also rejected
+   - Non-adjacent moves emit `move_failed` with power penalty
+   - World occupancy remains consistent after rejection
+
+3. **Spatial pressure excludes center cell**
+   - `compute_spatial_pressure()` now skips `(dx == 0, dy == 0)`
+   - Lone unit with no neighbors has pressure 0.0
+   - Measures nearby crowding only, not self-contribution
+
+4. **Unused event labels removed**
+   - Removed `OCCUPANCY_CONSTRAINT` and `CONTACT_EVENT` from allowed labels
+   - Only `UNIT_PROXIMITY` and `MOVEMENT_BLOCKED` are emitted in Milestone 2
+   - Documentation updated to match actual emitted events
+
+5. **Crowded scenario test tightened**
+   - Added `test_forced_blocked_movement_in_engine` that proves MOVEMENT_BLOCKED emission
+   - Proximity test remains for determinism verification

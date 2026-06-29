@@ -97,7 +97,8 @@ class World:
                 h.intensity = max(0.0, h.intensity - h.decay_rate)
         return events
 
-    def sense(self, position: Tuple[int, int], sensor_range: int) -> List[SensorReading]:
+    def sense(self, position: Tuple[int, int], sensor_range: int,
+              exclude_unit_id: Optional[str] = None) -> List[SensorReading]:
         readings: List[SensorReading] = []
         x, y = position
         for dx in range(-sensor_range, sensor_range + 1):
@@ -105,12 +106,14 @@ class World:
                 nx, ny = x + dx, y + dy
                 if (nx, ny) in self.grid:
                     cell = self.grid[(nx, ny)]
+                    nearby = [uid for uid in ([cell.unit_id] if cell.unit_id else [])
+                              if uid != exclude_unit_id]
                     readings.append(SensorReading(
                         tick=0,
                         position=(nx, ny),
                         resource_signals={k: r.quantity for k, r in cell.resources.items()},
                         hazard_signals={k: h.intensity for k, h in cell.hazards.items()},
-                        nearby_units=[cell.unit_id] if cell.unit_id else [],
+                        nearby_units=nearby,
                         signal_strength=max(0.0, 1.0 - (abs(dx) + abs(dy)) / (sensor_range * 2)),
                     ))
         return readings
@@ -169,24 +172,34 @@ class World:
 
     def _move(self, action: Action, unit: MachineUnit) -> ActionResult:
         target = action.target_position
-        if target and target in self.grid:
-            cell = self.grid[target]
-            if cell.unit_id is None:
-                old_pos = unit.position
-                self.grid[old_pos].unit_id = None
-                unit.position = target
-                cell.unit_id = unit.unit_id
-                return ActionResult(
-                    success=True, power_delta=-2.0, event_type="move",
-                    data={"from": old_pos, "to": target},
-                )
-            else:
-                return ActionResult(
-                    success=False, power_delta=-0.5,
-                    event_type="movement_blocked",
-                    data={"target": target, "blocked_by": cell.unit_id},
-                )
-        return ActionResult(success=False, power_delta=-0.5, event_type="move_failed")
+        if not target or target not in self.grid:
+            return ActionResult(success=False, power_delta=-0.5, event_type="move_failed")
+
+        # Enforce adjacent movement (max 1 step in any direction)
+        dx = abs(target[0] - unit.position[0])
+        dy = abs(target[1] - unit.position[1])
+        if dx > 1 or dy > 1 or (dx == 0 and dy == 0):
+            return ActionResult(
+                success=False, power_delta=-0.5, event_type="move_failed",
+                data={"cause": "non_adjacent", "target": target},
+            )
+
+        cell = self.grid[target]
+        if cell.unit_id is None:
+            old_pos = unit.position
+            self.grid[old_pos].unit_id = None
+            unit.position = target
+            cell.unit_id = unit.unit_id
+            return ActionResult(
+                success=True, power_delta=-2.0, event_type="move",
+                data={"from": old_pos, "to": target},
+            )
+        else:
+            return ActionResult(
+                success=False, power_delta=-0.5,
+                event_type="movement_blocked",
+                data={"target": target, "blocked_by": cell.unit_id},
+            )
 
     def _harvest(self, action: Action, unit: MachineUnit) -> ActionResult:
         cell = self.grid[unit.position]
@@ -232,7 +245,7 @@ class World:
     def _scan(self, action: Action, unit: MachineUnit) -> ActionResult:
         """Extended scan: read cells beyond normal sensor range."""
         extended_range = unit.sensor_range + 2
-        readings = self.sense(unit.position, extended_range)
+        readings = self.sense(unit.position, extended_range, exclude_unit_id=unit.unit_id)
         unit.receive_observations(readings, unit.local_memory[-1].tick if unit.local_memory else 0)
         return ActionResult(
             success=True, power_delta=-0.5,
@@ -258,14 +271,17 @@ class World:
     def compute_spatial_pressure(self, position: Tuple[int, int], sensor_range: int) -> float:
         """Compute local spatial pressure from nearby occupied cells.
 
-        Returns a bounded metric [0.0, 1.0] representing crowding.
-        0.0 = no nearby units, 1.0 = all nearby cells occupied.
+        Excludes the center cell (the sensing unit's own position).
+        Returns a bounded metric [0.0, 1.0] representing nearby crowding.
+        0.0 = no other units nearby, 1.0 = all nearby cells occupied by others.
         """
         x, y = position
         total_cells = 0
         occupied_cells = 0
         for dx in range(-sensor_range, sensor_range + 1):
             for dy in range(-sensor_range, sensor_range + 1):
+                if dx == 0 and dy == 0:
+                    continue  # Exclude center cell
                 nx, ny = x + dx, y + dy
                 if (nx, ny) in self.grid:
                     total_cells += 1

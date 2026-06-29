@@ -45,9 +45,8 @@ ALLOWED_EVENT_LABELS: Set[str] = {
     "move", "move_failed", "harvest", "harvest_empty",
     "scan", "collect", "collect_empty",
     "maintain", "maintain_failed", "idle",
-    # Milestone 2 interaction event types
-    "movement_blocked", "occupancy_constraint", "unit_proximity",
-    "contact_event",
+    # Milestone 2 emitted interaction event types
+    "movement_blocked", "unit_proximity",
 }
 
 # Allowed config keys

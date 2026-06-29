@@ -1,4 +1,4 @@
-# Milestone 2 Review Package
+# Milestone 2A Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
@@ -6,6 +6,7 @@
 - `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
 - `5744ad1` — Milestone 1B corrections (5 files, 205 insertions)
 - `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
+- PENDING — Milestone 2A corrections (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -74,17 +75,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 2)
+## Test Results (Milestone 2A)
 
 ```
-71 passed in 2.27s
+77 passed in 2.01s
 ```
 
-## Coverage Report (Milestone 2)
+## Coverage Report (Milestone 2A)
 
 ```
-TOTAL    787    107    86%
-Total coverage: 86.40%
+TOTAL    794    107    87%
+Total coverage: 86.52%
 ```
 
 ## Guardrail Output
