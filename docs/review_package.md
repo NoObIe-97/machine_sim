@@ -9,6 +9,7 @@
 - `43f40cf` — Milestone 2A corrections (6 files, 198 insertions)
 - `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
 - `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
+- `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
 
 ## Branch Name
 `feature/milestone-1`
@@ -77,17 +78,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 3)
+## Test Results (Milestone 3A)
 
 ```
-92 passed in 2.34s
+94 passed in 2.39s
 ```
 
-## Coverage Report (Milestone 3)
+## Coverage Report (Milestone 3A)
 
 ```
-TOTAL    856    107    88%
-Total coverage: 87.50%
+TOTAL    865    107    88%
+Total coverage: 87.63%
 ```
 
 ## Guardrail Output
