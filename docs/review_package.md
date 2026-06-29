@@ -5,7 +5,7 @@
 - `5fd908a` — documentation finalization
 - `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
 - `5744ad1` — Milestone 1B corrections (5 files, 205 insertions)
-- PENDING — Milestone 2 interaction substrate (this patch)
+- `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
 
 ## Branch Name
 `feature/milestone-1`
