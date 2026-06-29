@@ -1,10 +1,11 @@
-# Milestone 1 Review Package (Updated for 1B Corrections)
+# Milestone 2 Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
 - `5fd908a` — documentation finalization
 - `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
 - `5744ad1` — Milestone 1B corrections (5 files, 205 insertions)
+- PENDING — Milestone 2 interaction substrate (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -73,17 +74,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (1B)
+## Test Results (Milestone 2)
 
 ```
-55 passed in 1.71s
+71 passed in 2.27s
 ```
 
-## Coverage Report (1B)
+## Coverage Report (Milestone 2)
 
 ```
-TOTAL    747    104    86%
-Total coverage: 86.08%
+TOTAL    787    107    86%
+Total coverage: 86.40%
 ```
 
 ## Guardrail Output
@@ -92,18 +93,27 @@ Total coverage: 86.08%
 All guardrail checks passed.
 ```
 
-## Demo Output (1A)
+## Demo Output — Milestone 1 (500 ticks, 20x20, 5 units)
 
 ```
-Starting simulation: 20x20, 5 units, 500 ticks, seed=42
-Simulation complete. Tick 500/500
-Active units: 0/5
-
-Total events: 1766
+Total events: 1851
   UNIT_ACTION: 610
   TICK_BEGIN: 500
   TICK_END: 500
   RESOURCE_DEPLETED: 156
+  UNIT_PROXIMITY: 85
+```
+
+## Demo Output — Milestone 2 Crowded (100 ticks, 8x8, 6 units)
+
+```
+Total events: 1379
+  UNIT_ACTION: 566
+  UNIT_PROXIMITY: 465
+  RESOURCE_DEPLETED: 131
+  TICK_BEGIN: 100
+  TICK_END: 100
+  MOVEMENT_BLOCKED: 17
 ```
 
 ## Demo Artifact Policy

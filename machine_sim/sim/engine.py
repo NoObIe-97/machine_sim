@@ -81,6 +81,34 @@ class SimEngine:
                         unit_id=unit.unit_id,
                         data={"action": action.action_type.name, "success": result.success},
                     ))
+                    # Emit interaction events for blocked movement
+                    if result.event_type == "movement_blocked":
+                        self._record_event(Event(
+                            tick=self.tick_count,
+                            event_type=EventType.MOVEMENT_BLOCKED,
+                            unit_id=unit.unit_id,
+                            data=result.data,
+                        ))
+                    elif result.event_type == "occupancy_constraint":
+                        self._record_event(Event(
+                            tick=self.tick_count,
+                            event_type=EventType.OCCUPANCY_CONSTRAINT,
+                            unit_id=unit.unit_id,
+                            data=result.data,
+                        ))
+
+        # Phase 3b: Proximity detection and spatial pressure
+        for unit in self.units:
+            if unit.is_active:
+                nearby_count = self.world.count_nearby_units(unit.position, unit.sensor_range)
+                spatial_pressure = self.world.compute_spatial_pressure(unit.position, unit.sensor_range)
+                if nearby_count > 0:
+                    self._record_event(Event(
+                        tick=self.tick_count,
+                        event_type=EventType.UNIT_PROXIMITY,
+                        unit_id=unit.unit_id,
+                        data={"nearby_count": nearby_count, "spatial_pressure": spatial_pressure},
+                    ))
 
         # Phase 4: Unit degradation (variant-specific drain)
         for unit in self.units:

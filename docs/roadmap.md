@@ -7,11 +7,12 @@
 - Event logging, deterministic runs
 - Guardrail enforcement, basic tests
 
-## Milestone 2: Interaction Substrate
+## Milestone 2: Interaction Substrate ✓
 - Unit-unit proximity detection
-- Collision mechanics
-- Environmental modification (terrain alteration)
-- Spatial territory patterns
+- Occupancy-aware movement
+- Collision/movement-denial mechanics
+- Local spatial pressure metric
+- Machine-native event logging
 
 ## Milestone 3: Non-Semantic Signaling
 - Bit-pattern signal emission and detection

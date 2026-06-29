@@ -180,6 +180,12 @@ class World:
                     success=True, power_delta=-2.0, event_type="move",
                     data={"from": old_pos, "to": target},
                 )
+            else:
+                return ActionResult(
+                    success=False, power_delta=-0.5,
+                    event_type="movement_blocked",
+                    data={"target": target, "blocked_by": cell.unit_id},
+                )
         return ActionResult(success=False, power_delta=-0.5, event_type="move_failed")
 
     def _harvest(self, action: Action, unit: MachineUnit) -> ActionResult:
@@ -248,3 +254,36 @@ class World:
                 if cell.resources or cell.hazards or cell.unit_id
             },
         }
+
+    def compute_spatial_pressure(self, position: Tuple[int, int], sensor_range: int) -> float:
+        """Compute local spatial pressure from nearby occupied cells.
+
+        Returns a bounded metric [0.0, 1.0] representing crowding.
+        0.0 = no nearby units, 1.0 = all nearby cells occupied.
+        """
+        x, y = position
+        total_cells = 0
+        occupied_cells = 0
+        for dx in range(-sensor_range, sensor_range + 1):
+            for dy in range(-sensor_range, sensor_range + 1):
+                nx, ny = x + dx, y + dy
+                if (nx, ny) in self.grid:
+                    total_cells += 1
+                    if self.grid[(nx, ny)].unit_id is not None:
+                        occupied_cells += 1
+        if total_cells == 0:
+            return 0.0
+        return occupied_cells / total_cells
+
+    def count_nearby_units(self, position: Tuple[int, int], sensor_range: int) -> int:
+        """Count units within sensor range (excluding self)."""
+        x, y = position
+        count = 0
+        for dx in range(-sensor_range, sensor_range + 1):
+            for dy in range(-sensor_range, sensor_range + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = x + dx, y + dy
+                if (nx, ny) in self.grid and self.grid[(nx, ny)].unit_id is not None:
+                    count += 1
+        return count
