@@ -21,6 +21,8 @@ class EventType(Enum):
     ENVIRONMENT_UPDATE = auto()
     MOVEMENT_BLOCKED = auto()
     UNIT_PROXIMITY = auto()
+    SIGNAL_EMITTED = auto()
+    SIGNAL_RECEIVED = auto()
 
 
 @dataclass(frozen=True, slots=True)

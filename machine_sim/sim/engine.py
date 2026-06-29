@@ -90,6 +90,14 @@ class SimEngine:
                             unit_id=unit.unit_id,
                             data=result.data,
                         ))
+                    # Emit signal events
+                    if result.event_type == "emit_signal":
+                        self._record_event(Event(
+                            tick=self.tick_count,
+                            event_type=EventType.SIGNAL_EMITTED,
+                            unit_id=unit.unit_id,
+                            data=result.data,
+                        ))
 
         # Phase 3b: Proximity detection and spatial pressure
         for unit in self.units:
@@ -102,6 +110,18 @@ class SimEngine:
                         event_type=EventType.UNIT_PROXIMITY,
                         unit_id=unit.unit_id,
                         data={"nearby_count": nearby_count, "spatial_pressure": spatial_pressure},
+                    ))
+
+        # Phase 3c: Signal sensing
+        for unit in self.units:
+            if unit.is_active:
+                signal_obs = self.world.sense_signals(unit.position, unit.sensor_range)
+                for obs in signal_obs:
+                    self._record_event(Event(
+                        tick=self.tick_count,
+                        event_type=EventType.SIGNAL_RECEIVED,
+                        unit_id=unit.unit_id,
+                        data=obs,
                     ))
 
         # Phase 4: Unit degradation (variant-specific drain)

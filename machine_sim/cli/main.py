@@ -47,6 +47,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             unit_id=f"unit-{i:03d}",
             position=(rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1)),
             variant=variant,
+            signal_enabled=cfg.signal_enabled,
         )
         engine.register_unit(unit)
 

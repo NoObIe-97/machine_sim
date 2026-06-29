@@ -17,6 +17,7 @@ class ActionType(Enum):
     COLLECT = auto()
     MAINTAIN = auto()
     IDLE = auto()
+    EMIT_SIGNAL = auto()
 
 
 @dataclass(frozen=True, slots=True)

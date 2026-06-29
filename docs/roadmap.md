@@ -14,11 +14,14 @@
 - Local spatial pressure metric
 - Machine-native event logging
 
-## Milestone 3: Non-Semantic Signaling
-- Bit-pattern signal emission and detection
-- Signal correlation across units
-- Signal-based coordination primitives
-- Environmental signal propagation
+## Milestone 3: Non-Semantic Signaling ✓
+- Signal emission (EMIT_SIGNAL action)
+- Signal propagation with bounded radius
+- Signal decay and expiration
+- Signal sensing by nearby units
+- Energy cost for emission
+- Machine-native event logging
+- Deterministic replay
 
 ## Milestone 4: Conflict/Cooperation Through Resource Pressure
 - Resource competition mechanics

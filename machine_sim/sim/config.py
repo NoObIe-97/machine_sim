@@ -20,6 +20,12 @@ class SimConfig:
     power_drain_rate: float = 1.0
     max_ticks: int = 500
     seed: int = 42
+    signal_enabled: bool = False
+    signal_pattern_count: int = 3
+    signal_energy_cost: float = 2.0
+    signal_default_radius: int = 3
+    signal_default_decay: float = 0.1
+    signal_default_duration: int = 10
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

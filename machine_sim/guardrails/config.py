@@ -33,7 +33,7 @@ ALLOWED_COMPONENT_NAMES: Set[str] = {
 
 # Allowed action type names
 ALLOWED_ACTION_NAMES: Set[str] = {
-    "MOVE", "SCAN", "HARVEST", "COLLECT", "MAINTAIN", "IDLE",
+    "MOVE", "SCAN", "HARVEST", "COLLECT", "MAINTAIN", "IDLE", "EMIT_SIGNAL",
 }
 
 # Allowed event type labels
@@ -47,12 +47,16 @@ ALLOWED_EVENT_LABELS: Set[str] = {
     "maintain", "maintain_failed", "idle",
     # Milestone 2 emitted interaction event types
     "movement_blocked", "unit_proximity",
+    # Milestone 3 signal event types
+    "emit_signal", "signal_emitted", "signal_received",
 }
 
 # Allowed config keys
 ALLOWED_CONFIG_KEYS: Set[str] = {
     "grid_width", "grid_height", "resource_density", "hazard_density",
     "unit_count", "power_drain_rate", "max_ticks", "seed",
+    "signal_enabled", "signal_pattern_count", "signal_energy_cost",
+    "signal_default_radius", "signal_default_decay", "signal_default_duration",
 }
 
 # Allowed memory event_type labels
@@ -60,5 +64,5 @@ ALLOWED_MEMORY_LABELS: Set[str] = {
     "move", "move_failed", "harvest", "harvest_empty",
     "scan", "collect", "collect_empty",
     "maintain", "maintain_failed", "idle",
-    "movement_blocked",
+    "movement_blocked", "emit_signal",
 }

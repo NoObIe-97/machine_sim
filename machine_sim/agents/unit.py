@@ -29,8 +29,11 @@ class MachineUnitImpl(MachineUnit):
         unit_id: str,
         position: Tuple[int, int] = (0, 0),
         variant: Optional[Variant] = None,
+        signal_enabled: bool = False,
     ) -> None:
         self.variant = variant or ALL_VARIANTS[0]
+        self.signal_enabled = signal_enabled
+        self._last_signal_tick = -10
         super().__init__(
             unit_id=unit_id,
             position=position,
@@ -64,7 +67,23 @@ class MachineUnitImpl(MachineUnit):
         if critical and critical.health < 0.3:
             return Action(ActionType.MAINTAIN, target_component=critical.name)
 
-        # Priority 4: Moderate power — scan to update readings
+        # Priority 4: Signal emission (periodic, neutral)
+        if (self.signal_enabled and power_ratio > 0.5
+                and tick - self._last_signal_tick >= 5):
+            self._last_signal_tick = tick
+            pattern_id = tick % 3  # Cycle through 3 patterns
+            return Action(
+                ActionType.EMIT_SIGNAL,
+                parameters={
+                    "pattern_id": pattern_id,
+                    "intensity": 1.0,
+                    "radius": 4,
+                    "decay_rate": 0.15,
+                    "duration": 8,
+                },
+            )
+
+        # Priority 5: Moderate power — scan to update readings
         if power_ratio < 0.7:
             return Action(ActionType.SCAN)
 

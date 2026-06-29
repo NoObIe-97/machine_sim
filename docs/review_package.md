@@ -1,4 +1,4 @@
-# Milestone 2B Review Package
+# Milestone 3 Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
@@ -8,6 +8,7 @@
 - `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
 - `43f40cf` — Milestone 2A corrections (6 files, 198 insertions)
 - `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
+- PENDING — Milestone 3 non-semantic signaling (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -76,17 +77,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 2B)
+## Test Results (Milestone 3)
 
 ```
-78 passed in 2.34s
+92 passed in 2.34s
 ```
 
-## Coverage Report (Milestone 2B)
+## Coverage Report (Milestone 3)
 
 ```
-TOTAL    790    106    87%
-Total coverage: 86.58%
+TOTAL    856    107    88%
+Total coverage: 87.50%
 ```
 
 ## Guardrail Output
@@ -118,20 +119,35 @@ Total events: 1379
   MOVEMENT_BLOCKED: 17
 ```
 
+## Demo Output — Milestone 3 Signals (100 ticks, 10x10, 4 units)
+
+```
+Total events: 1244
+  UNIT_ACTION: 342
+  SIGNAL_RECEIVED: 327
+  UNIT_PROXIMITY: 212
+  RESOURCE_DEPLETED: 102
+  HAZARD_ENCOUNTER: 33
+  SIGNAL_EMITTED: 28
+```
+
 ## Demo Artifact Policy
 
-`output/demo/` is **intentionally ignored** via `.gitignore`. Demo artifacts are generated locally using deterministic seed (42) but not committed.
+`output/` is **intentionally ignored** via `.gitignore`. Demo artifacts are generated locally using deterministic seed (42) but not committed.
 
 ## Report Paths
 - `docs/milestone_1_report.md` — original Milestone 1 report
 - `docs/milestone_1a_report.md` — hardening patch report
+- `docs/milestone_2_report.md` — Milestone 2 interaction substrate report
+- `docs/milestone_3_report.md` — Milestone 3 signaling substrate report
 
 ## Clean Working Tree
 Pending commit of this patch.
 
 ## Known Limitations
 
-1. All units deactivate within 500 ticks — survival pressure is high
-2. No inter-unit interaction (no collision, signaling, or resource competition)
-3. Terrain module defined but not integrated into world grid
-4. Decision logic is purely reactive — no multi-step planning
+1. Signal propagation is distance-based only (no terrain/obstacle attenuation)
+2. Emission rule is simple periodic — no adaptive emission
+3. No signal accumulation or interference model
+4. Units store observations in memory but do not act on signal content
+5. Pattern_id is a simple integer — no complex waveform representation

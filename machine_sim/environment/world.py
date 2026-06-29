@@ -35,6 +35,20 @@ class Cell:
         return sum(h.intensity for h in self.hazards.values())
 
 
+@dataclass
+class Signal:
+    """A non-semantic physical signal in the world."""
+    signal_id: int
+    source_unit_id: str
+    pattern_id: int
+    position: Tuple[int, int]
+    intensity: float
+    radius: int
+    decay_rate: float
+    emitted_tick: int
+    duration: int = 10
+
+
 class World:
     """Dict-based sparse grid world."""
 
@@ -43,6 +57,8 @@ class World:
         self.height = height
         self.rng = rng
         self.grid: Dict[Tuple[int, int], Cell] = {}
+        self.signals: List[Signal] = []
+        self._next_signal_id = 0
         self._init_grid()
 
     def _init_grid(self) -> None:
@@ -95,7 +111,53 @@ class World:
                     ))
             for h in cell.hazards.values():
                 h.intensity = max(0.0, h.intensity - h.decay_rate)
+        # Decay and remove expired signals
+        self.signals = [s for s in self.signals if tick - s.emitted_tick < s.duration]
+        for sig in self.signals:
+            sig.intensity = max(0.0, sig.intensity - sig.decay_rate)
         return events
+
+    def emit_signal(self, source_unit_id: str, position: Tuple[int, int],
+                    pattern_id: int, intensity: float, radius: int,
+                    decay_rate: float, tick: int, duration: int = 10) -> Signal:
+        """Create a new signal in the world."""
+        sig = Signal(
+            signal_id=self._next_signal_id,
+            source_unit_id=source_unit_id,
+            pattern_id=pattern_id,
+            position=position,
+            intensity=intensity,
+            radius=radius,
+            decay_rate=decay_rate,
+            emitted_tick=tick,
+            duration=duration,
+        )
+        self._next_signal_id += 1
+        self.signals.append(sig)
+        return sig
+
+    def sense_signals(self, position: Tuple[int, int],
+                      sensor_range: int) -> List[Dict[str, Any]]:
+        """Return signal observations visible from a position."""
+        observations: List[Dict[str, Any]] = []
+        x, y = position
+        for sig in self.signals:
+            if sig.intensity <= 0:
+                continue
+            sx, sy = sig.position
+            dist = abs(x - sx) + abs(y - sy)  # Manhattan distance
+            if dist <= min(sig.radius, sensor_range):
+                signal_strength = max(0.0, sig.intensity * (1.0 - dist / max(sig.radius, 1)))
+                observations.append({
+                    "signal_id": sig.signal_id,
+                    "source_unit_id": sig.source_unit_id,
+                    "pattern_id": sig.pattern_id,
+                    "position": sig.position,
+                    "intensity": sig.intensity,
+                    "signal_strength": signal_strength,
+                    "distance": dist,
+                })
+        return observations
 
     def sense(self, position: Tuple[int, int], sensor_range: int,
               exclude_unit_id: Optional[str] = None) -> List[SensorReading]:
@@ -129,6 +191,8 @@ class World:
             return self._scan(action, unit)
         elif action.action_type == ActionType.COLLECT:
             return self._collect(action, unit)
+        elif action.action_type == ActionType.EMIT_SIGNAL:
+            return self._emit_signal(action, unit)
         else:
             return ActionResult(success=True, power_delta=-0.1, event_type="idle")
 
@@ -251,6 +315,37 @@ class World:
             success=True, power_delta=-0.5,
             event_type="scan",
             data={"extended_range": extended_range, "readings_count": len(readings)},
+        )
+
+    def _emit_signal(self, action: Action, unit: MachineUnit) -> ActionResult:
+        """Emit a non-semantic physical signal."""
+        params = action.parameters
+        pattern_id = params.get("pattern_id", 0)
+        intensity = params.get("intensity", 1.0)
+        radius = params.get("radius", 3)
+        decay_rate = params.get("decay_rate", 0.1)
+        duration = params.get("duration", 10)
+
+        sig = self.emit_signal(
+            source_unit_id=unit.unit_id,
+            position=unit.position,
+            pattern_id=pattern_id,
+            intensity=intensity,
+            radius=radius,
+            decay_rate=decay_rate,
+            tick=unit.local_memory[-1].tick if unit.local_memory else 0,
+            duration=duration,
+        )
+
+        return ActionResult(
+            success=True, power_delta=-2.0,
+            event_type="emit_signal",
+            data={
+                "signal_id": sig.signal_id,
+                "pattern_id": pattern_id,
+                "radius": radius,
+                "intensity": intensity,
+            },
         )
 
     def snapshot(self) -> Dict[str, Any]:
