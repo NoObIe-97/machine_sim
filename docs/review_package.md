@@ -3,7 +3,7 @@
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
 - `5fd908a` — documentation finalization
-- PENDING — Milestone 1A hardening commit (this patch)
+- `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
 
 ## Branch Name
 `feature/milestone-1`
