@@ -1,7 +1,13 @@
 # Milestone 1 Review Package
 
 ## Commit Hash
-PENDING (not yet committed)
+`6b1bde7`
+
+## Branch Name
+`feature/milestone-1`
+
+## GitHub Repository
+https://github.com/NoObIe-97/machine_sim.git
 
 ## File Tree
 ```
@@ -10,6 +16,7 @@ docs/architecture.md
 docs/guardrails.md
 docs/milestone_1_plan.md
 docs/milestone_1_report.md
+docs/review_package.md
 docs/review_package_spec.md
 docs/roadmap.md
 machine_sim/__init__.py
@@ -47,8 +54,6 @@ machine_sim/tests/test_determinism.py
 machine_sim/tests/test_engine.py
 machine_sim/tests/test_environment.py
 machine_sim/tests/test_guardrails.py
-output/demo/events.json
-output/demo/state.json
 prompts/PLAN.md
 prompts/after_silicon_mimo_v25_pro_planning_prompt.md
 pyproject.toml
@@ -63,19 +68,23 @@ python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
 python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo
 python -m machine_sim.cli.main check
 python -m machine_sim.cli.main inspect output/demo
+git status
+git show --stat --oneline -1
+git push -u origin feature/milestone-1
+git ls-remote --heads origin feature/milestone-1
 ```
 
 ## Test Results
 
 ```
-32 passed in 0.50s
+32 passed in 0.65s
 ```
 
 ## Coverage Report
 
 ```
-TOTAL    693    103    85%
-Required test coverage of 80.0% reached. Total coverage: 85.14%
+TOTAL    704    114    84%
+Required test coverage of 80.0% reached. Total coverage: 83.81%
 ```
 
 ## Guardrail Output
@@ -99,8 +108,29 @@ Total events: 1802
   RESOURCE_DEPLETED: 159
 ```
 
+## Git Status
+
+```
+On branch feature/milestone-1
+nothing to commit, working tree clean
+```
+
+## Git Show Output
+
+```
+6b1bde7 feat: implement Milestone 1 survival substrate
+ 47 files changed, 2735 insertions(+)
+```
+
+## Demo Artifact Policy
+
+`output/demo/` is **intentionally ignored** via `.gitignore`. Demo artifacts (`state.json`, `events.json`) are generated locally by running the demo command but are not committed to the repository. This keeps the repository clean and allows anyone to regenerate identical demo output using the deterministic seed.
+
 ## Report Path
 `docs/milestone_1_report.md`
+
+## Clean Working Tree
+Yes — `git status` shows nothing to commit.
 
 ## Known Limitations
 
