@@ -54,14 +54,14 @@ Hardened Milestone 1 with runtime guardrail integration, functional hazard mecha
 ## Test Results
 
 ```
-47 passed in 1.82s
+55 passed in 1.71s
 ```
 
 ## Coverage
 
 ```
-TOTAL    744    108    85%
-Total coverage: 85.48%
+TOTAL    747    104    86%
+Total coverage: 86.08%
 ```
 
 ## Guardrail Result
@@ -94,3 +94,37 @@ Total events: 1766
 - `docs/milestone_1_report.md` — updated
 - `docs/milestone_1a_report.md` — new
 - `docs/review_package.md` — updated
+
+---
+
+## Milestone 1B Correction Notes
+
+### What Was Fixed
+
+1. **Config-key validation integrated into config loading**
+   - `SimConfig.from_toml()` now calls `validate_config_keys()` before constructing `SimConfig`
+   - Unknown keys like `social_graph` or `morale_level` are rejected at load time
+   - Tests prove both rejection of invalid keys and acceptance of valid keys
+
+2. **Runtime validation tests strengthened**
+   - `test_engine_rejects_forbidden_action_name` — verifies action validation path in engine
+   - `test_engine_rejects_forbidden_event_label` — verifies event label validation
+   - `test_engine_rejects_corrupted_unit_state` — proves out-of-bounds power is rejected
+   - `test_engine_rejects_corrupted_memory_label` — proves forbidden memory labels are rejected
+
+3. **Weak hazard test fixed**
+   - `test_engine_emits_hazard_events` now places hazard at unit's actual position (after random init)
+   - Asserts at least one HAZARD_ENCOUNTER event is emitted
+   - `test_engine_hazard_can_deactivate_unit` proves deactivation from combined degrade + hazard damage
+
+4. **Event logging scope clarified**
+   - Harvest/maintain/component events are captured as action result labels in `UNIT_ACTION` logs
+   - Hazard encounters and unit deactivation have dedicated `EventType` entries
+   - All event labels are machine-native
+
+### Honest Assessment
+
+- Runtime validation is integrated into the engine tick lifecycle and rejects forbidden labels at the engine level
+- Config validation now happens at load time, not just in isolated tests
+- Hazard mechanics are functional and provably emit events and cause deactivation
+- The substrate is ready for Milestone 2 interaction mechanics

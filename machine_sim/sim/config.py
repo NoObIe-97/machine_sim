@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict
 
+from machine_sim.guardrails.runtime import StateViolation, validate_config_keys
+
 
 @dataclass
 class SimConfig:
@@ -23,7 +25,9 @@ class SimConfig:
     def from_toml(cls, path: Path) -> SimConfig:
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        return cls(**data.get("simulation", {}))
+        sim_data = data.get("simulation", {})
+        validate_config_keys(set(sim_data.keys()))
+        return cls(**sim_data)
 
     def to_dict(self) -> Dict[str, Any]:
         from dataclasses import asdict

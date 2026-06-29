@@ -1,9 +1,10 @@
-# Milestone 1 Review Package (Updated for 1A Hardening)
+# Milestone 1 Review Package (Updated for 1B Corrections)
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
 - `5fd908a` — documentation finalization
 - `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
+- PENDING — Milestone 1B corrections (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -72,17 +73,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (1A)
+## Test Results (1B)
 
 ```
-47 passed in 1.82s
+55 passed in 1.71s
 ```
 
-## Coverage Report (1A)
+## Coverage Report (1B)
 
 ```
-TOTAL    744    108    85%
-Total coverage: 85.48%
+TOTAL    747    104    86%
+Total coverage: 86.08%
 ```
 
 ## Guardrail Output
