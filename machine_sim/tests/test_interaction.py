@@ -244,6 +244,17 @@ class TestCollisionEventLogging:
         for label in ["movement_blocked", "unit_proximity"]:
             validate_event_label(label)
 
+    def test_milestone2_only_emits_two_event_types(self):
+        """Milestone 2 runtime only emits MOVEMENT_BLOCKED and UNIT_PROXIMITY."""
+        from machine_sim.sim.events import EventType
+        milestone2_events = {EventType.MOVEMENT_BLOCKED, EventType.UNIT_PROXIMITY}
+        # Verify these are the only Milestone 2 interaction events
+        assert EventType.MOVEMENT_BLOCKED in milestone2_events
+        assert EventType.UNIT_PROXIMITY in milestone2_events
+        # Verify removed event types no longer exist
+        assert not hasattr(EventType, 'OCCUPANCY_CONSTRAINT')
+        assert not hasattr(EventType, 'CONTACT_EVENT')
+
     def test_forbidden_labels_still_rejected(self):
         """Forbidden social/emotional labels are still rejected."""
         with pytest.raises(StateViolation, match="Forbidden event label"):
@@ -252,6 +263,11 @@ class TestCollisionEventLogging:
             validate_event_label("cooperate")
         with pytest.raises(StateViolation, match="Forbidden event label"):
             validate_event_label("hostile")
+        # Also verify removed Milestone 2 labels are rejected
+        with pytest.raises(StateViolation, match="Forbidden event label"):
+            validate_event_label("occupancy_constraint")
+        with pytest.raises(StateViolation, match="Forbidden event label"):
+            validate_event_label("contact_event")
 
 
 class TestSpatialPressure:

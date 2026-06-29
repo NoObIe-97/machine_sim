@@ -23,7 +23,7 @@ Implemented the first layer of machine-machine interaction: unit proximity detec
 - Both unit positions remain valid after failed movement
 
 ### 3. Collision/Contact Event Logging (events.py, engine.py)
-- New event types: `MOVEMENT_BLOCKED`, `OCCUPANCY_CONSTRAINT`, `UNIT_PROXIMITY`, `CONTACT_EVENT`
+- New event types: `MOVEMENT_BLOCKED`, `UNIT_PROXIMITY`
 - Events emitted during engine tick lifecycle
 - All labels pass guardrail validation
 
@@ -61,14 +61,12 @@ Implemented the first layer of machine-machine interaction: unit proximity detec
 | Label | Description |
 |-------|-------------|
 | `movement_blocked` | Move attempted into occupied cell |
-| `occupancy_constraint` | Movement constraint due to occupancy |
 | `unit_proximity` | Unit detected nearby units |
-| `contact_event` | Physical co-presence event |
 
 ## Guardrail Updates
 
-- Added new event labels to `ALLOWED_EVENT_LABELS`
-- Added `movement_blocked`, `occupancy_constraint` to `ALLOWED_MEMORY_LABELS`
+- Added `movement_blocked`, `unit_proximity` to `ALLOWED_EVENT_LABELS`
+- Added `movement_blocked` to `ALLOWED_MEMORY_LABELS`
 - All new labels are machine-native, no social/emotional terms
 - Forbidden labels still rejected
 
@@ -154,10 +152,34 @@ Milestone 3: Non-Semantic Signaling — bit-pattern emission/detection, signal c
    - Measures nearby crowding only, not self-contribution
 
 4. **Unused event labels removed**
-   - Removed `OCCUPANCY_CONSTRAINT` and `CONTACT_EVENT` from allowed labels
+   - Removed `OCCUPANCY_CONSTRAINT` and `CONTACT_EVENT` from EventType enum
+   - Removed dead engine branch that would emit `OCCUPANCY_CONSTRAINT`
+   - Removed `occupancy_constraint` from `ALLOWED_MEMORY_LABELS`
    - Only `UNIT_PROXIMITY` and `MOVEMENT_BLOCKED` are emitted in Milestone 2
    - Documentation updated to match actual emitted events
 
 5. **Crowded scenario test tightened**
    - Added `test_forced_blocked_movement_in_engine` that proves MOVEMENT_BLOCKED emission
    - Proximity test remains for determinism verification
+
+---
+
+## Milestone 2B Correction Notes
+
+### What Was Fixed
+
+1. **Event enum cleanup**
+   - Removed `OCCUPANCY_CONSTRAINT` and `CONTACT_EVENT` from `EventType` enum
+   - Source code, guardrails, and tests now agree on emitted event labels
+
+2. **Dead engine branch removed**
+   - Removed the `elif result.event_type == "occupancy_constraint"` branch in engine.py
+   - No dormant code paths that would raise guardrail violations
+
+3. **Memory labels aligned**
+   - Removed `occupancy_constraint` from `ALLOWED_MEMORY_LABELS`
+   - Only `movement_blocked` is in the memory label set for Milestone 2
+
+4. **Event-label policy test added**
+   - `test_milestone2_only_emits_two_event_types` verifies removed enums no longer exist
+   - `test_forbidden_labels_still_rejected` now also checks `occupancy_constraint` and `contact_event` are rejected

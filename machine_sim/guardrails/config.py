@@ -60,5 +60,5 @@ ALLOWED_MEMORY_LABELS: Set[str] = {
     "move", "move_failed", "harvest", "harvest_empty",
     "scan", "collect", "collect_empty",
     "maintain", "maintain_failed", "idle",
-    "movement_blocked", "occupancy_constraint",
+    "movement_blocked",
 }

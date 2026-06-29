@@ -20,9 +20,7 @@ class EventType(Enum):
     HAZARD_ENCOUNTER = auto()
     ENVIRONMENT_UPDATE = auto()
     MOVEMENT_BLOCKED = auto()
-    OCCUPANCY_CONSTRAINT = auto()
     UNIT_PROXIMITY = auto()
-    CONTACT_EVENT = auto()
 
 
 @dataclass(frozen=True, slots=True)

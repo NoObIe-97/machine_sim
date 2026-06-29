@@ -90,13 +90,6 @@ class SimEngine:
                             unit_id=unit.unit_id,
                             data=result.data,
                         ))
-                    elif result.event_type == "occupancy_constraint":
-                        self._record_event(Event(
-                            tick=self.tick_count,
-                            event_type=EventType.OCCUPANCY_CONSTRAINT,
-                            unit_id=unit.unit_id,
-                            data=result.data,
-                        ))
 
         # Phase 3b: Proximity detection and spatial pressure
         for unit in self.units:
