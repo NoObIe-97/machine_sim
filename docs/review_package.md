@@ -8,7 +8,7 @@
 - `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
 - `43f40cf` — Milestone 2A corrections (6 files, 198 insertions)
 - `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
-- PENDING — Milestone 3 non-semantic signaling (this patch)
+- `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
 
 ## Branch Name
 `feature/milestone-1`
