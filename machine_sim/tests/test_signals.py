@@ -201,6 +201,45 @@ class TestSignalSensing:
         r2 = run_signal_sense(42)
         assert r1 == r2
 
+    def test_source_unit_excluded_from_own_signal(self):
+        """Source unit does not receive its own signal."""
+        import random
+        rng = random.Random(42)
+        world = World(10, 10, rng)
+        u0 = MachineUnitImpl("u0", position=(5, 5))
+        world.grid[(5, 5)].unit_id = "u0"
+
+        action = Action(
+            ActionType.EMIT_SIGNAL,
+            parameters={"pattern_id": 0, "intensity": 1.0, "radius": 3, "decay_rate": 0.1, "duration": 10},
+        )
+        world.execute_action(action, u0)
+
+        # u0 should NOT sense its own signal
+        observations = world.sense_signals(u0.position, u0.sensor_range, exclude_unit_id="u0")
+        assert len(observations) == 0, "Source unit should not receive its own signal"
+
+    def test_other_units_still_receive_signal(self):
+        """Other units still receive signals from the source."""
+        import random
+        rng = random.Random(42)
+        world = World(10, 10, rng)
+        u0 = MachineUnitImpl("u0", position=(5, 5))
+        u1 = MachineUnitImpl("u1", position=(5, 6))
+        world.grid[(5, 5)].unit_id = "u0"
+        world.grid[(5, 6)].unit_id = "u1"
+
+        action = Action(
+            ActionType.EMIT_SIGNAL,
+            parameters={"pattern_id": 0, "intensity": 1.0, "radius": 3, "decay_rate": 0.1, "duration": 10},
+        )
+        world.execute_action(action, u0)
+
+        # u1 should receive the signal
+        observations = world.sense_signals(u1.position, u1.sensor_range, exclude_unit_id="u1")
+        assert len(observations) >= 1, "Other unit should receive signal"
+        assert observations[0]["source_unit_id"] == "u0"
+
 
 class TestSignalGuardrails:
     """Signal-related guardrail tests."""

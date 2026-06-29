@@ -18,16 +18,17 @@
 - Signal emission (EMIT_SIGNAL action)
 - Signal propagation with bounded radius
 - Signal decay and expiration
-- Signal sensing by nearby units
+- Signal sensing by nearby units (source excluded from own signal)
 - Energy cost for emission
 - Machine-native event logging
 - Deterministic replay
 
-## Milestone 4: Conflict/Cooperation Through Resource Pressure
-- Resource competition mechanics
-- Resource sharing (proximity-based)
-- Resource denial (blocking access)
-- Territorial behavior emergence
+## Milestone 4: Signal Correlation and Statistical Association
+- Signal pattern correlation across ticks
+- Temporal signal clustering
+- Signal density mapping
+- Adaptive emission based on local signal environment
+- Still no semantic meaning assigned
 
 ## Milestone 5: Reproduction and Design Inheritance
 - Unit replication (copy parameters + noise)

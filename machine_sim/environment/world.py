@@ -59,6 +59,7 @@ class World:
         self.grid: Dict[Tuple[int, int], Cell] = {}
         self.signals: List[Signal] = []
         self._next_signal_id = 0
+        self._current_tick = 0
         self._init_grid()
 
     def _init_grid(self) -> None:
@@ -97,6 +98,7 @@ class World:
             self.grid[pos].unit_id = unit.unit_id
 
     def update(self, tick: int) -> List[Event]:
+        self._current_tick = tick
         events: List[Event] = []
         for pos, cell in self.grid.items():
             for res in cell.resources.values():
@@ -137,12 +139,19 @@ class World:
         return sig
 
     def sense_signals(self, position: Tuple[int, int],
-                      sensor_range: int) -> List[Dict[str, Any]]:
-        """Return signal observations visible from a position."""
+                      sensor_range: int,
+                      exclude_unit_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return signal observations visible from a position.
+
+        The exclude_unit_id parameter allows excluding signals from a specific
+        source (typically the sensing unit itself, to avoid self-reception).
+        """
         observations: List[Dict[str, Any]] = []
         x, y = position
         for sig in self.signals:
             if sig.intensity <= 0:
+                continue
+            if exclude_unit_id and sig.source_unit_id == exclude_unit_id:
                 continue
             sx, sy = sig.position
             dist = abs(x - sx) + abs(y - sy)  # Manhattan distance
@@ -317,7 +326,8 @@ class World:
             data={"extended_range": extended_range, "readings_count": len(readings)},
         )
 
-    def _emit_signal(self, action: Action, unit: MachineUnit) -> ActionResult:
+    def _emit_signal(self, action: Action, unit: MachineUnit,
+                     current_tick: int = 0) -> ActionResult:
         """Emit a non-semantic physical signal."""
         params = action.parameters
         pattern_id = params.get("pattern_id", 0)
@@ -333,7 +343,7 @@ class World:
             intensity=intensity,
             radius=radius,
             decay_rate=decay_rate,
-            tick=unit.local_memory[-1].tick if unit.local_memory else 0,
+            tick=self._current_tick,
             duration=duration,
         )
 

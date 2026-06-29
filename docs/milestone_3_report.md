@@ -29,6 +29,7 @@ Implemented a non-semantic signaling substrate where units can emit physical sig
 
 ### 4. Signal Sensing (world.py, sim/engine.py)
 - `sense_signals()` returns observations visible from a position
+- Source units are excluded from receiving their own signals (explicit policy)
 - Observations include: signal_id, source_unit_id, pattern_id, position, intensity, signal_strength, distance
 - Signal strength decreases with distance from source
 - Engine emits `SIGNAL_RECEIVED` events for each visible signal
@@ -145,4 +146,4 @@ Total events: 1244
 
 ## Next Recommended Milestone
 
-Milestone 4: Conflict/Cooperation Through Resource Pressure — resource competition, sharing, denial, territorial behavior emergence.
+Milestone 4: Signal Correlation and Statistical Association — signal pattern correlation across ticks, temporal clustering, density mapping, adaptive emission. Still no semantic meaning assigned.

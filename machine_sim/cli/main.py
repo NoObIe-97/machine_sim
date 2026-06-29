@@ -48,6 +48,11 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             position=(rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1)),
             variant=variant,
             signal_enabled=cfg.signal_enabled,
+            signal_pattern_count=cfg.signal_pattern_count,
+            signal_energy_cost=cfg.signal_energy_cost,
+            signal_default_radius=cfg.signal_default_radius,
+            signal_default_decay=cfg.signal_default_decay,
+            signal_default_duration=cfg.signal_default_duration,
         )
         engine.register_unit(unit)
 

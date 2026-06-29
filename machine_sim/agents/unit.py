@@ -30,9 +30,19 @@ class MachineUnitImpl(MachineUnit):
         position: Tuple[int, int] = (0, 0),
         variant: Optional[Variant] = None,
         signal_enabled: bool = False,
+        signal_pattern_count: int = 3,
+        signal_energy_cost: float = 2.0,
+        signal_default_radius: int = 3,
+        signal_default_decay: float = 0.1,
+        signal_default_duration: int = 10,
     ) -> None:
         self.variant = variant or ALL_VARIANTS[0]
         self.signal_enabled = signal_enabled
+        self.signal_pattern_count = signal_pattern_count
+        self.signal_energy_cost = signal_energy_cost
+        self.signal_default_radius = signal_default_radius
+        self.signal_default_decay = signal_default_decay
+        self.signal_default_duration = signal_default_duration
         self._last_signal_tick = -10
         super().__init__(
             unit_id=unit_id,
@@ -71,15 +81,15 @@ class MachineUnitImpl(MachineUnit):
         if (self.signal_enabled and power_ratio > 0.5
                 and tick - self._last_signal_tick >= 5):
             self._last_signal_tick = tick
-            pattern_id = tick % 3  # Cycle through 3 patterns
+            pattern_id = tick % self.signal_pattern_count
             return Action(
                 ActionType.EMIT_SIGNAL,
                 parameters={
                     "pattern_id": pattern_id,
                     "intensity": 1.0,
-                    "radius": 4,
-                    "decay_rate": 0.15,
-                    "duration": 8,
+                    "radius": self.signal_default_radius,
+                    "decay_rate": self.signal_default_decay,
+                    "duration": self.signal_default_duration,
                 },
             )
 

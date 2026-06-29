@@ -112,10 +112,11 @@ class SimEngine:
                         data={"nearby_count": nearby_count, "spatial_pressure": spatial_pressure},
                     ))
 
-        # Phase 3c: Signal sensing
+        # Phase 3c: Signal sensing (source units excluded from own signals)
         for unit in self.units:
             if unit.is_active:
-                signal_obs = self.world.sense_signals(unit.position, unit.sensor_range)
+                signal_obs = self.world.sense_signals(unit.position, unit.sensor_range,
+                                                      exclude_unit_id=unit.unit_id)
                 for obs in signal_obs:
                     self._record_event(Event(
                         tick=self.tick_count,
