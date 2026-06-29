@@ -123,11 +123,49 @@ class World:
         elif action.action_type == ActionType.MAINTAIN:
             return self._maintain(action, unit)
         elif action.action_type == ActionType.SCAN:
-            return ActionResult(success=True, power_delta=-0.5, event_type="scan")
+            return self._scan(action, unit)
         elif action.action_type == ActionType.COLLECT:
             return self._collect(action, unit)
         else:
             return ActionResult(success=True, power_delta=-0.1, event_type="idle")
+
+    def apply_hazard_damage(self, unit: MachineUnit, tick: int) -> List[Event]:
+        """Apply hazard effects to unit occupying a hazardous cell."""
+        events: List[Event] = []
+        cell = self.grid.get(unit.position)
+        if not cell or not cell.hazards:
+            return events
+
+        total_intensity = cell.hazard_intensity
+        if total_intensity <= 0:
+            return events
+
+        power_penalty = -total_intensity * 2.0
+        unit.power_reserve = max(0.0, unit.power_reserve + power_penalty)
+
+        for h in cell.hazards.values():
+            if h.intensity > 0.1:
+                comp_damage = -h.intensity * 0.05
+                for comp in unit.components.values():
+                    comp.health = max(0.0, comp.health + comp_damage)
+
+        events.append(Event(
+            tick=tick,
+            event_type=EventType.HAZARD_ENCOUNTER,
+            unit_id=unit.unit_id,
+            data={"intensity": total_intensity, "power_penalty": power_penalty},
+        ))
+
+        if unit.power_reserve <= 0 or unit._critical_component_failed():
+            unit.is_active = False
+            events.append(Event(
+                tick=tick,
+                event_type=EventType.UNIT_DEACTIVATED,
+                unit_id=unit.unit_id,
+                data={"cause": "hazard_damage"},
+            ))
+
+        return events
 
     def _move(self, action: Action, unit: MachineUnit) -> ActionResult:
         target = action.target_position
@@ -184,6 +222,17 @@ class World:
                 event_type="collect", data={"amount": amount},
             )
         return ActionResult(success=False, power_delta=-0.5, event_type="collect_empty")
+
+    def _scan(self, action: Action, unit: MachineUnit) -> ActionResult:
+        """Extended scan: read cells beyond normal sensor range."""
+        extended_range = unit.sensor_range + 2
+        readings = self.sense(unit.position, extended_range)
+        unit.receive_observations(readings, unit.local_memory[-1].tick if unit.local_memory else 0)
+        return ActionResult(
+            success=True, power_delta=-0.5,
+            event_type="scan",
+            data={"extended_range": extended_range, "readings_count": len(readings)},
+        )
 
     def snapshot(self) -> Dict[str, Any]:
         return {

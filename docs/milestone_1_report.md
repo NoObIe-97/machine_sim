@@ -10,14 +10,16 @@ Implemented the executable, tested, bias-guarded survival substrate for the Afte
 ## What Was Built
 
 ### Simulation Engine
-- Tick-based loop with 7 phases: ENV_UPDATE → SENSE → DECIDE → ACT → DEGRADE → LOG → VALIDATE
+- Tick-based loop with 7 phases: ENV_UPDATE → SENSE → DECIDE → ACT → DEGRADE → HAZARD → VALIDATE
 - Deterministic seeding via isolated `random.Random` instances
 - Configurable grid size, resource/hazard density, unit count, tick count
+- Runtime guardrail validation integrated into tick lifecycle (1A hardening)
 
 ### Machine Units
 - Single generic `MachineUnitImpl` class with 3 hardware-variant parameter sets (Balanced, Power-Heavy, Sensor-Heavy)
 - Machine-native state: power_reserve, components (sensor, actuator, processor, power_cell), sensor_readings, local_memory
 - Decision logic uses only threshold gates, gradient following, correlation detection, and reinforcement scoring
+- Variant-specific power drain rates (1A hardening): Balanced=1.0, Power-Heavy=1.2, Sensor-Heavy=0.8
 - No anthropomorphic concepts in runtime logic
 
 ### Milestone 1 Primitive Actions
@@ -31,12 +33,15 @@ Implemented the executable, tested, bias-guarded survival substrate for the Afte
 ### Environment
 - Dict-based sparse grid with resources (POWER_NODE, COMPONENT_SCRAP, CONDUCTOR) and hazards (EM_PULSE, THERMAL_ZONE, CORROSIVE_FIELD, DEBRIS)
 - Resource regrowth and hazard decay mechanics
+- Hazard damage: power penalty and component degradation proportional to intensity (1A hardening)
 - Local sensing within configurable range
+- SCAN action extends sensor range by +2 beyond normal (1A hardening)
 
 ### Guardrail System
 - **Lexical scan**: regex detection of anthropomorphic terms in agent/environment code
 - **AST check**: forbidden assignments, class bases, and parameters
 - **Runtime validation**: state fields, component names, action names, event labels, config keys, memory labels
+- **Integrated into engine**: validate_action_name before execution, validate_event_label before recording, validate_agent_state after each tick (1A hardening)
 - Guardrails, CLI, and test directories excluded from self-scan
 
 ### CLI
@@ -51,8 +56,8 @@ Implemented the executable, tested, bias-guarded survival substrate for the Afte
 ## Test Results
 
 ```
-32 passed in 0.50s
-Coverage: 85.14%
+47 passed in 1.82s
+Coverage: 85.48%
 ```
 
 ## Guardrail Result
@@ -64,8 +69,8 @@ All guardrail checks passed.
 ## Demo Output
 
 - 500-tick simulation, 5 units, 20x20 grid, seed=42
-- 1802 total events (643 UNIT_ACTION, 500 TICK_BEGIN, 500 TICK_END, 159 RESOURCE_DEPLETED)
-- All units deactivated by tick 500 (expected — power depletion is the survival pressure)
+- 1766 total events (610 UNIT_ACTION, 500 TICK_BEGIN, 500 TICK_END, 156 RESOURCE_DEPLETED)
+- All units deactivated by tick 500 (expected — power depletion + hazard damage is the survival pressure)
 
 ## Files Created
 

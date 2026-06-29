@@ -7,6 +7,12 @@ from typing import List, Optional
 
 from machine_sim.agents.base import MachineUnit
 from machine_sim.environment.world import World
+from machine_sim.guardrails.runtime import (
+    StateViolation,
+    validate_action_name,
+    validate_agent_state,
+    validate_event_label,
+)
 from machine_sim.sim.config import SimConfig
 from machine_sim.sim.events import Event, EventLog, EventType
 from machine_sim.sim.state import SimulationState
@@ -42,14 +48,18 @@ class SimEngine:
             self.tick()
         return self.snapshot()
 
+    def _record_event(self, event: Event) -> None:
+        validate_event_label(event.event_type.name.lower())
+        self.event_log.record(event)
+
     def tick(self) -> None:
         self.tick_count += 1
-        self.event_log.begin_tick(self.tick_count)
+        self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_BEGIN))
 
         # Phase 1: Environment update
         env_events = self.world.update(self.tick_count)
         for e in env_events:
-            self.event_log.record(e)
+            self._record_event(e)
 
         # Phase 2: Unit sensing
         for unit in self.units:
@@ -62,21 +72,36 @@ class SimEngine:
             if unit.is_active:
                 action = unit.decide(self.tick_count)
                 if action is not None:
+                    validate_action_name(action.action_type.name)
                     result = self.world.execute_action(action, unit)
                     unit.apply_result(result, self.tick_count)
-                    self.event_log.record(Event(
+                    self._record_event(Event(
                         tick=self.tick_count,
                         event_type=EventType.UNIT_ACTION,
                         unit_id=unit.unit_id,
                         data={"action": action.action_type.name, "success": result.success},
                     ))
 
-        # Phase 4: Unit degradation
+        # Phase 4: Unit degradation (variant-specific drain)
         for unit in self.units:
             if unit.is_active:
-                unit.degrade(self.config.power_drain_rate, self.rng)
+                drain = getattr(unit, 'variant', None)
+                drain_rate = drain.power_drain_rate if drain else self.config.power_drain_rate
+                unit.degrade(drain_rate, self.rng)
 
-        self.event_log.end_tick(self.tick_count)
+        # Phase 5: Hazard damage
+        for unit in self.units:
+            if unit.is_active:
+                hazard_events = self.world.apply_hazard_damage(unit, self.tick_count)
+                for e in hazard_events:
+                    self._record_event(e)
+
+        # Phase 6: Validate state
+        for unit in self.units:
+            if unit.is_active:
+                validate_agent_state(unit.state_copy())
+
+        self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_END))
 
     def snapshot(self) -> SimulationState:
         return SimulationState(

@@ -1,15 +1,9 @@
-# Milestone 1 Review Package
+# Milestone 1 Review Package (Updated for 1A Hardening)
 
 ## Commit Hash
-`6b1bde7` — original implementation commit (47 files, 2735 insertions)
-
-Subsequent commits are documentation patches only:
-- `7028667` docs: finalize milestone 1 review package
-- `17fe2db` docs: update review package with final commit hash
-- `e09c469` docs: update review package with final commit hash
-- `85aefa7` docs: update review package with final commit hash
-- `cb740b6` docs: update review package with final commit hash
-- `afecd18` docs: update review package with final commit hash
+- `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
+- `5fd908a` — documentation finalization
+- PENDING — Milestone 1A hardening commit (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -17,13 +11,14 @@ Subsequent commits are documentation patches only:
 ## GitHub Repository
 https://github.com/NoObIe-97/machine_sim.git
 
-## File Tree
+## File Tree (post-1A)
 ```
 configs/milestone_1.toml
 docs/architecture.md
 docs/guardrails.md
 docs/milestone_1_plan.md
 docs/milestone_1_report.md
+docs/milestone_1a_report.md
 docs/review_package.md
 docs/review_package_spec.md
 docs/roadmap.md
@@ -67,32 +62,27 @@ prompts/after_silicon_mimo_v25_pro_planning_prompt.md
 pyproject.toml
 ```
 
-## Commands Run
+## Commands Run (1A Hardening)
 
 ```bash
-pip install click pytest-cov
 python -m pytest machine_sim/tests/ -v
 python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
-python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo
 python -m machine_sim.cli.main check
+python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo
 python -m machine_sim.cli.main inspect output/demo
-git status
-git show --stat --oneline -1
-git push -u origin feature/milestone-1
-git ls-remote --heads origin feature/milestone-1
 ```
 
-## Test Results
+## Test Results (1A)
 
 ```
-32 passed in 0.65s
+47 passed in 1.82s
 ```
 
-## Coverage Report
+## Coverage Report (1A)
 
 ```
-TOTAL    704    114    84%
-Required test coverage of 80.0% reached. Total coverage: 83.81%
+TOTAL    744    108    85%
+Total coverage: 85.48%
 ```
 
 ## Guardrail Output
@@ -101,48 +91,34 @@ Required test coverage of 80.0% reached. Total coverage: 83.81%
 All guardrail checks passed.
 ```
 
-## Demo Output
+## Demo Output (1A)
 
 ```
 Starting simulation: 20x20, 5 units, 500 ticks, seed=42
 Simulation complete. Tick 500/500
 Active units: 0/5
-Output written to output\demo
 
-Total events: 1802
-  UNIT_ACTION: 643
+Total events: 1766
+  UNIT_ACTION: 610
   TICK_BEGIN: 500
   TICK_END: 500
-  RESOURCE_DEPLETED: 159
-```
-
-## Git Status
-
-```
-On branch feature/milestone-1
-nothing to commit, working tree clean
-```
-
-## Git Show Output
-
-```
-6b1bde7 feat: implement Milestone 1 survival substrate
- 47 files changed, 2735 insertions(+)
+  RESOURCE_DEPLETED: 156
 ```
 
 ## Demo Artifact Policy
 
-`output/demo/` is **intentionally ignored** via `.gitignore`. Demo artifacts (`state.json`, `events.json`) are generated locally by running the demo command but are not committed to the repository. This keeps the repository clean and allows anyone to regenerate identical demo output using the deterministic seed.
+`output/demo/` is **intentionally ignored** via `.gitignore`. Demo artifacts are generated locally using deterministic seed (42) but not committed.
 
-## Report Path
-`docs/milestone_1_report.md`
+## Report Paths
+- `docs/milestone_1_report.md` — original Milestone 1 report
+- `docs/milestone_1a_report.md` — hardening patch report
 
 ## Clean Working Tree
-Yes — `git status` shows nothing to commit.
+Pending commit of this patch.
 
 ## Known Limitations
 
-1. All units deactivate within 500 ticks — survival pressure is high with current parameters
+1. All units deactivate within 500 ticks — survival pressure is high
 2. No inter-unit interaction (no collision, signaling, or resource competition)
 3. Terrain module defined but not integrated into world grid
 4. Decision logic is purely reactive — no multi-step planning
