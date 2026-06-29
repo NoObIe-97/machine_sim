@@ -7,7 +7,7 @@
 - `5744ad1` — Milestone 1B corrections (5 files, 205 insertions)
 - `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
 - `43f40cf` — Milestone 2A corrections (6 files, 198 insertions)
-- PENDING — Milestone 2B event-label cleanup (this patch)
+- `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
 
 ## Branch Name
 `feature/milestone-1`
