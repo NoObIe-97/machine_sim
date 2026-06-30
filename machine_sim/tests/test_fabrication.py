@@ -327,18 +327,37 @@ class TestFabricationDemo:
         assert fab.power_cost == initial_power_cost
         assert fab.material_cost == initial_material_cost
 
-    def test_fabrication_demo_generates_successors(self):
-        """Engine-level fabrication creates successors with proper config."""
-        cfg = SimConfig(grid_width=15, grid_height=15, max_ticks=250, seed=42,
-                        unit_count=3, resource_density=0.4, hazard_density=0.02,
-                        signal_enabled=True, adaptive_enabled=True,
+    def test_fabrication_engine_level_creates_successors(self):
+        """Engine-level fabrication creates real successor units."""
+        cfg = SimConfig(grid_width=20, grid_height=20, max_ticks=200, seed=42,
+                        unit_count=3, resource_density=0.5, hazard_density=0.01,
+                        power_drain_rate=0.4,
                         fabrication_enabled=True, population_cap=12,
-                        fabrication_interval=10, fabrication_power_cost=15.0,
+                        fabrication_interval=8, fabrication_power_cost=10.0,
                         fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(3):
-            engine.register_unit(MachineUnitImpl(f"u-{i}", signal_enabled=True,
-                                                  adaptive_enabled=True))
+            engine.register_unit(MachineUnitImpl(f"u-{i}"))
+        initial_count = len(engine.units)
         engine.run()
+
         summary = engine.get_fabrication_summary()
-        assert summary["total_attempts"] > 0, "Should have fabrication attempts"
+        assert summary["total_successes"] > 0, \
+            f"Expected fabrication success, got {summary['total_successes']}"
+        assert summary["total_lineage_records"] > 0, \
+            "Expected lineage records to be non-empty"
+
+        # Verify successor units exist in engine state
+        final_count = len(engine.units)
+        assert final_count > initial_count, \
+            f"Expected population growth: {initial_count} -> {final_count}"
+
+        # Verify lineage references actual successor units
+        unit_ids = {u.unit_id for u in engine.units}
+        for record in summary["lineage"]:
+            assert record["successor"] in unit_ids, \
+                f"Lineage successor {record['successor']} not found in units"
+
+        # Verify generation indices are correct
+        for record in summary["lineage"]:
+            assert record["successor_gen"] == record["source_gen"] + 1
