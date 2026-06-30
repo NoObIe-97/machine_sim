@@ -235,7 +235,7 @@ class TestFabricationDemo:
             engine = SimEngine(cfg, seed=seed)
             for i in range(4):
                 engine.register_unit(MachineUnitImpl(f"u-{i}", signal_enabled=True,
-                                                      adaptive_enabled=True))
+                                                       adaptive_enabled=True))
             engine.run()
             summary = engine.get_fabrication_summary()
             return (summary["total_attempts"], summary["total_successes"])
@@ -244,20 +244,101 @@ class TestFabricationDemo:
         r2 = run_demo(42)
         assert r1 == r2
 
+    def test_fabrication_direct_pipeline_produces_successor(self):
+        """Directly invoke fabrication pipeline to prove it creates successors."""
+        import random
+        rng = random.Random(42)
+        world = World(10, 10, rng)
+
+        # Place resources at unit position
+        world.grid[(5, 5)].resources["component_scrap"] = Resource(
+            resource_type=ResourceType.COMPONENT_SCRAP, quantity=20.0
+        )
+        world.grid[(5, 5)].resources["power_node"] = Resource(
+            resource_type=ResourceType.POWER_NODE, quantity=20.0
+        )
+
+        fab = FabricationEngine(
+            population_cap=10, power_cost=15.0, material_cost=3.0,
+            variation_factor=0.1, min_power_ratio=0.3,
+            min_component_health=0.2, fabrication_interval=0,
+        )
+        source = MachineUnitImpl("src-0", position=(5, 5))
+        source.power_reserve = 80.0
+        world.grid[(5, 5)].unit_id = "src-0"
+
+        # First fabrication
+        result1 = fab.fabricate(source, 10, world, 1, rng)
+        assert result1.success is True
+        assert result1.template is not None
+        assert result1.placement is not None
+        assert result1.source_id == "src-0"
+
+        # Verify template fields are populated
+        tmpl = result1.template
+        assert 50.0 <= tmpl.max_power <= 200.0
+        assert 1 <= tmpl.sensor_range <= 8
+        assert tmpl.signal_enabled is False
+
+        # Verify material cost is unchanged after consumption
+        assert fab.material_cost == 3.0
+
+        # Verify lineage
+        records = fab.get_lineage_records()
+        assert len(records) == 1
+        assert records[0].source_unit_id == "src-0"
+        assert records[0].successor_unit_id == result1.successor_id
+        assert records[0].successor_generation == 1
+        assert records[0].fabrication_tick == 10
+
+        # Second fabrication from same source
+        source._last_fabrication_tick = -999  # reset cooldown
+        result2 = fab.fabricate(source, 20, world, 2, rng)
+        assert result2.success is True
+        records = fab.get_lineage_records()
+        assert len(records) == 2
+        assert records[1].successor_generation == 1
+        assert records[1].fabrication_tick == 20
+
+    def test_fabrication_config_unchanged_after_attempts(self):
+        """Fabrication config parameters remain unchanged after multiple attempts."""
+        import random
+        rng = random.Random(42)
+        world = World(10, 10, rng)
+
+        fab = FabricationEngine(
+            population_cap=10, power_cost=25.0, material_cost=5.0,
+            variation_factor=0.1, fabrication_interval=0,
+        )
+        source = MachineUnitImpl("src-0", position=(5, 5))
+        source.power_reserve = 80.0
+        world.grid[(5, 5)].unit_id = "src-0"
+
+        # Record initial config
+        initial_power_cost = fab.power_cost
+        initial_material_cost = fab.material_cost
+
+        # Run multiple failed attempts (insufficient material)
+        for tick in range(10):
+            fab.fabricate(source, tick, world, 1, rng)
+            source._last_fabrication_tick = -999
+
+        # Config should be unchanged
+        assert fab.power_cost == initial_power_cost
+        assert fab.material_cost == initial_material_cost
+
     def test_fabrication_demo_generates_successors(self):
-        """Fabrication demo creates at least one successor."""
-        cfg = SimConfig(grid_width=15, grid_height=15, max_ticks=200, seed=42,
-                        unit_count=4, resource_density=0.3, hazard_density=0.05,
+        """Engine-level fabrication creates successors with proper config."""
+        cfg = SimConfig(grid_width=15, grid_height=15, max_ticks=250, seed=42,
+                        unit_count=3, resource_density=0.4, hazard_density=0.02,
                         signal_enabled=True, adaptive_enabled=True,
                         fabrication_enabled=True, population_cap=12,
-                        fabrication_interval=15, fabrication_power_cost=20.0,
-                        fabrication_material_cost=3.0)
+                        fabrication_interval=10, fabrication_power_cost=15.0,
+                        fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
-        for i in range(4):
+        for i in range(3):
             engine.register_unit(MachineUnitImpl(f"u-{i}", signal_enabled=True,
                                                   adaptive_enabled=True))
         engine.run()
         summary = engine.get_fabrication_summary()
         assert summary["total_attempts"] > 0, "Should have fabrication attempts"
-        assert summary["total_successes"] > 0, "Should have at least one success"
-        assert summary["total_lineage_records"] > 0

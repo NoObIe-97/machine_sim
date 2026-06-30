@@ -44,6 +44,8 @@ class FabricationResult:
     successor_id: Optional[str] = None
     source_id: str = ""
     failure_cause: str = ""
+    placement: Optional[Tuple[int, int]] = None
+    template: Optional[DesignTemplate] = None
     material_cost: float = 0.0
     power_cost: float = 0.0
     design_distance: float = 0.0
@@ -104,7 +106,7 @@ class FabricationEngine:
         if avg_health < self.min_component_health:
             return False, "source_unstable"
 
-        # Cooldown check
+        # Cooldown check — fabrication_interval controls attempt frequency
         last_fab_tick = getattr(source_unit, '_last_fabrication_tick', -999)
         if current_tick - last_fab_tick < self.fabrication_interval:
             return False, "fabrication_cooldown"
@@ -160,17 +162,25 @@ class FabricationEngine:
                 failure_cause=cause,
             )
 
-        # Deduct costs
-        source_unit.power_reserve -= self.power_cost
+        # Immutable per-attempt cost tracking
+        remaining_power_cost = self.power_cost
+        remaining_material_cost = self.material_cost
+
+        # Deduct power cost
+        source_unit.power_reserve -= remaining_power_cost
+
+        # Deduct material cost from local resources
         cell = world.grid.get(source_unit.position)
         if cell:
-            # Consume material from any available resource
             for res in cell.resources.values():
-                if res.quantity >= self.material_cost:
-                    res.quantity -= self.material_cost
+                if remaining_material_cost <= 0:
                     break
-                elif res.quantity > 0:
-                    self.material_cost -= res.quantity
+                if res.quantity >= remaining_material_cost:
+                    res.quantity -= remaining_material_cost
+                    remaining_material_cost = 0.0
+                    break
+                else:
+                    remaining_material_cost -= res.quantity
                     res.quantity = 0
 
         # Find placement
@@ -178,14 +188,14 @@ class FabricationEngine:
         if not placement:
             self._fabrication_failures["placement_unavailable"] = \
                 self._fabrication_failures.get("placement_unavailable", 0) + 1
-            source_unit.power_reserve += self.power_cost
+            source_unit.power_reserve += remaining_power_cost
             return FabricationResult(
                 success=False,
                 source_id=source_unit.unit_id,
                 failure_cause="placement_unavailable",
             )
 
-        # Create design template with variation
+        # Create design template with variation (single source of truth)
         template = self._create_template(source_unit, rng)
 
         # Generate successor ID
@@ -214,6 +224,8 @@ class FabricationEngine:
             success=True,
             successor_id=successor_id,
             source_id=source_unit.unit_id,
+            placement=placement,
+            template=template,
             material_cost=self.material_cost,
             power_cost=self.power_cost,
         )

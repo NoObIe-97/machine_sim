@@ -207,24 +207,23 @@ class SimEngine:
                         unit, self.tick_count, self.world,
                         len(self.units) + len(new_units), self.rng
                     )
-                    if result.success:
-                        # Create successor unit from design template
+                    if result.success and result.template and result.placement:
+                        # Create successor unit from the exact template generated
                         from machine_sim.agents.unit import MachineUnitImpl
-                        template = self.fabrication_engine._create_template(unit, self.rng)
-                        placement = self.fabrication_engine._find_placement(
-                            unit.position, self.world
-                        )
+                        tmpl = result.template
                         successor = MachineUnitImpl(
                             unit_id=result.successor_id,
-                            position=placement or unit.position,
-                            signal_enabled=template.signal_enabled,
-                            signal_pattern_count=template.signal_pattern_count,
-                            signal_energy_cost=template.signal_energy_cost,
-                            signal_default_radius=template.signal_default_radius,
-                            signal_default_decay=template.signal_default_decay,
-                            signal_default_duration=template.signal_default_duration,
-                            adaptive_enabled=template.adaptive_enabled,
+                            position=result.placement,
+                            signal_enabled=tmpl.signal_enabled,
+                            signal_pattern_count=tmpl.signal_pattern_count,
+                            signal_energy_cost=tmpl.signal_energy_cost,
+                            signal_default_radius=tmpl.signal_default_radius,
+                            signal_default_decay=tmpl.signal_default_decay,
+                            signal_default_duration=tmpl.signal_default_duration,
+                            adaptive_enabled=tmpl.adaptive_enabled,
                         )
+                        successor.max_power = tmpl.max_power
+                        successor.SENSOR_RANGE = tmpl.sensor_range
                         successor._generation_index = getattr(unit, '_generation_index', 0) + 1
                         new_units.append(successor)
                         self._record_event(Event(
@@ -233,8 +232,11 @@ class SimEngine:
                             unit_id=unit.unit_id,
                             data={
                                 "successor_id": result.successor_id,
+                                "placement": list(result.placement),
                                 "material_cost": result.material_cost,
                                 "power_cost": result.power_cost,
+                                "max_power": tmpl.max_power,
+                                "sensor_range": tmpl.sensor_range,
                             },
                         ))
                     elif result.failure_cause:

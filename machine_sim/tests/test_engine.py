@@ -223,11 +223,12 @@ def test_variant_specific_drain():
 def test_deterministic_replay_compares_outputs():
     """Same seed produces identical final state summaries."""
     def run_summary(seed):
-        cfg = SimConfig(grid_width=10, grid_height=10, max_ticks=50,
-                        seed=seed, unit_count=3, resource_density=0.3)
+        cfg = SimConfig(grid_width=15, grid_height=15, max_ticks=100,
+                        seed=seed, unit_count=5, resource_density=0.4,
+                        hazard_density=0.1)
         engine = SimEngine(cfg, seed=seed)
-        for i in range(3):
-            engine.register_unit(MachineUnitImpl(f"u-{i}", position=(i, i)))
+        for i in range(5):
+            engine.register_unit(MachineUnitImpl(f"u-{i}", position=(i*2, i*2)))
         state = engine.run()
         return (
             state.tick,

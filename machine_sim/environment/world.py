@@ -88,6 +88,11 @@ class World:
                 )
 
     def place_unit(self, unit: MachineUnit, rng: random.Random) -> None:
+        # If unit already has a valid position, use it
+        if unit.position in self.grid and self.grid[unit.position].unit_id is None:
+            self.grid[unit.position].unit_id = unit.unit_id
+            return
+        # Otherwise find a random empty cell
         empty_cells = [
             pos for pos, c in self.grid.items()
             if c.unit_id is None
