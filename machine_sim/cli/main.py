@@ -80,12 +80,14 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
     # Output adaptive summary if enabled
     if cfg.adaptive_enabled:
         adaptive_summary = engine.get_adaptive_summary()
-        click.echo("Adaptive behavior summary:")
+        click.echo("Adaptive behavior summary (cumulative / recent-window):")
         for uid, summary in adaptive_summary.items():
-            click.echo(f"  {uid}: signals={summary['signal_count']}, "
-                       f"hazard_density={summary['hazard_density']:.2f}, "
-                       f"emission_rate={summary['emission_rate']:.2f}, "
-                       f"scan_rate={summary['scan_rate']:.2f}")
+            click.echo(f"  {uid}: total_signals={summary['total_signals']}, "
+                       f"total_emissions={summary['total_emissions']}, "
+                       f"total_scans={summary['total_scans']}, "
+                       f"total_hazards={summary['total_hazards']}, "
+                       f"recent_emission_rate={summary['emission_rate']:.2f}, "
+                       f"recent_scan_rate={summary['scan_rate']:.2f}")
 
     if output:
         outpath = Path(output)
@@ -146,6 +148,64 @@ def check() -> None:
         raise SystemExit(1)
     else:
         click.echo("All guardrail checks passed.")
+
+
+@cli.command()
+@click.option("--config", "-c", type=click.Path(exists=True),
+              default="configs/milestone_5_adaptive.toml")
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--seed", "-s", type=int, default=42)
+def compare(config: str, ticks: int | None, seed: int) -> None:
+    """Compare baseline vs adaptive mode."""
+    from machine_sim.agents.unit import MachineUnitImpl as Unit
+
+    cfg = SimConfig.from_toml(Path(config))
+    if ticks is not None:
+        cfg.max_ticks = ticks
+
+    results = {}
+    for mode_name, adaptive in [("baseline", False), ("adaptive", True)]:
+        cfg_copy = SimConfig(**cfg.to_dict())
+        cfg_copy.adaptive_enabled = adaptive
+        engine = SimEngine(cfg_copy, seed=seed)
+        rng = random.Random(seed)
+        for i in range(cfg_copy.unit_count):
+            variant = ALL_VARIANTS[i % len(ALL_VARIANTS)]
+            unit = Unit(
+                unit_id=f"unit-{i:03d}",
+                position=(rng.randint(0, cfg_copy.grid_width - 1),
+                          rng.randint(0, cfg_copy.grid_height - 1)),
+                variant=variant,
+                signal_enabled=cfg_copy.signal_enabled,
+                adaptive_enabled=adaptive,
+            )
+            engine.register_unit(unit)
+        state = engine.run()
+        events = engine.event_log.all_events()
+        emitted = [e for e in events if e.event_type.name == "SIGNAL_EMITTED"]
+        received = [e for e in events if e.event_type.name == "SIGNAL_RECEIVED"]
+        blocked = [e for e in events if e.event_type.name == "MOVEMENT_BLOCKED"]
+        hazards = [e for e in events if e.event_type.name == "HAZARD_ENCOUNTER"]
+        active = sum(1 for a in state.agents if a.is_active)
+
+        results[mode_name] = {
+            "active_units": active,
+            "total_events": len(events),
+            "emitted": len(emitted),
+            "received": len(received),
+            "blocked": len(blocked),
+            "hazards": len(hazards),
+        }
+
+    click.echo("Baseline vs Adaptive Comparison:")
+    click.echo(f"  {'Metric':<20} {'Baseline':>10} {'Adaptive':>10} {'Delta':>10}")
+    click.echo(f"  {'-'*50}")
+    for metric in ["active_units", "total_events", "emitted", "received", "blocked", "hazards"]:
+        b = results["baseline"][metric]
+        a = results["adaptive"][metric]
+        delta = a - b
+        sign = "+" if delta > 0 else ""
+        click.echo(f"  {metric:<20} {b:>10} {a:>10} {sign}{delta:>9}")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,13 @@ class SignalFieldSummary:
     recent_movement_blocks: int = 0
     emission_rate: float = 0.0
     scan_rate: float = 0.0
+    # Cumulative run-level stats
+    total_signals: int = 0
+    total_hazards: int = 0
+    total_proximity: int = 0
+    total_movement_blocks: int = 0
+    total_emissions: int = 0
+    total_scans: int = 0
 
 
 class LocalFieldTracker:
@@ -25,6 +32,7 @@ class LocalFieldTracker:
 
     Tracks recent signal observations, hazard encounters, proximity events,
     and movement constraints within a bounded window.
+    Also maintains cumulative run-level counters.
     """
 
     def __init__(self, window_size: int = 20) -> None:
@@ -35,25 +43,38 @@ class LocalFieldTracker:
         self._movement_blocks: deque = deque(maxlen=window_size)
         self._emission_ticks: deque = deque(maxlen=window_size)
         self._scan_ticks: deque = deque(maxlen=window_size)
+        # Cumulative counters
+        self._total_signals = 0
+        self._total_hazards = 0
+        self._total_proximity = 0
+        self._total_movement_blocks = 0
+        self._total_emissions = 0
+        self._total_scans = 0
 
     def record_signal_observation(self, tick: int, pattern_id: int,
                                   intensity: float) -> None:
         self._signal_observations.append((tick, pattern_id, intensity))
+        self._total_signals += 1
 
     def record_hazard_event(self, tick: int) -> None:
         self._hazard_events.append(tick)
+        self._total_hazards += 1
 
     def record_proximity_event(self, tick: int, nearby_count: int) -> None:
         self._proximity_events.append((tick, nearby_count))
+        self._total_proximity += 1
 
     def record_movement_block(self, tick: int) -> None:
         self._movement_blocks.append(tick)
+        self._total_movement_blocks += 1
 
     def record_emission(self, tick: int) -> None:
         self._emission_ticks.append(tick)
+        self._total_emissions += 1
 
     def record_scan(self, tick: int) -> None:
         self._scan_ticks.append(tick)
+        self._total_scans += 1
 
     def get_summary(self, current_tick: int) -> SignalFieldSummary:
         """Compute bounded local statistics."""
@@ -95,6 +116,13 @@ class LocalFieldTracker:
             recent_movement_blocks=len(recent_blocks),
             emission_rate=len(recent_emissions) / window_len,
             scan_rate=len(recent_scans) / window_len,
+            # Cumulative run-level stats
+            total_signals=self._total_signals,
+            total_hazards=self._total_hazards,
+            total_proximity=self._total_proximity,
+            total_movement_blocks=self._total_movement_blocks,
+            total_emissions=self._total_emissions,
+            total_scans=self._total_scans,
         )
 
 

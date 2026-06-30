@@ -96,19 +96,20 @@ python -m machine_sim.cli.main run -c configs/milestone_4_correlation.toml -t 10
 python -m machine_sim.cli.main inspect output/demo_m4
 python -m machine_sim.cli.main run -c configs/milestone_5_adaptive.toml -t 150 -s 42 -o output/demo_m5
 python -m machine_sim.cli.main inspect output/demo_m5
+python -m machine_sim.cli.main compare -c configs/milestone_5_adaptive.toml -t 150 -s 42
 ```
 
 ## Test Results
 
 ```
-137 passed in 4.13s
+137 passed in 3.90s
 ```
 
 ## Coverage
 
 ```
-TOTAL    936    111    88%
-Total coverage: 88.14%
+TOTAL    977    147    85%
+Total coverage: 84.95%
 ```
 
 ## Demo Output Summary
@@ -122,6 +123,27 @@ Total events: 1365
   RESOURCE_DEPLETED: 102
   MOVEMENT_BLOCKED: 39
   SIGNAL_EMITTED: 38
+  HAZARD_ENCOUNTER: 27
+
+Adaptive behavior summary (cumulative / recent-window):
+  unit-000: total_signals=1, total_emissions=7, total_scans=7, total_hazards=0
+  unit-001: total_signals=0, total_emissions=9, total_scans=10, total_hazards=0
+  unit-002: total_signals=53, total_emissions=9, total_scans=6, total_hazards=0
+  unit-003: total_signals=63, total_emissions=9, total_scans=11, total_hazards=0
+  unit-004: total_signals=0, total_emissions=4, total_scans=10, total_hazards=27
+```
+
+### Baseline-vs-Adaptive Comparison
+```
+  Metric                 Baseline   Adaptive      Delta
+  --------------------------------------------------
+  active_units                  0          0         0
+  total_events               1351       1409 +       58
+  emitted                      35         38 +        3
+  received                     91        161 +       70
+  blocked                      42         39        -3
+  hazards                      27         27         0
+```
   HAZARD_ENCOUNTER: 27
 
 Signal correlation: 38 emissions, 352 observations, 310 associations

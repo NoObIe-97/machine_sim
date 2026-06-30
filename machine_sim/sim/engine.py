@@ -214,6 +214,7 @@ class SimEngine:
             if hasattr(unit, '_field_tracker'):
                 field_summary = unit._field_tracker.get_summary(self.tick_count)
                 summaries[unit.unit_id] = {
+                    # Recent window stats
                     "signal_count": field_summary.recent_signal_count,
                     "pattern_frequency": dict(field_summary.pattern_frequency),
                     "avg_intensity": field_summary.avg_received_intensity,
@@ -222,6 +223,13 @@ class SimEngine:
                     "movement_blocks": field_summary.recent_movement_blocks,
                     "emission_rate": field_summary.emission_rate,
                     "scan_rate": field_summary.scan_rate,
+                    # Cumulative run-level stats
+                    "total_signals": field_summary.total_signals,
+                    "total_hazards": field_summary.total_hazards,
+                    "total_proximity": field_summary.total_proximity,
+                    "total_movement_blocks": field_summary.total_movement_blocks,
+                    "total_emissions": field_summary.total_emissions,
+                    "total_scans": field_summary.total_scans,
                     "adaptive_enabled": getattr(unit, 'adaptive_enabled', False),
                 }
         return summaries
