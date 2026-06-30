@@ -12,6 +12,7 @@
 - `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
 - `4950310` — Milestone 4 signal correlation (12 files, 624 insertions)
 - `49780f2` — Milestone 5 adaptive signal control (13 files, 932 insertions)
+- `04eab03` — Milestone 5A hardening (4 files, 126 insertions)
 
 ## Branch Name
 `feature/milestone-1`
