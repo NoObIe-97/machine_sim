@@ -10,7 +10,7 @@
 - `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
 - `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
 - `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
-- PENDING — Milestone 4 signal correlation (this patch)
+- `4950310` — Milestone 4 signal correlation (12 files, 624 insertions)
 
 ## Branch Name
 `feature/milestone-1`
