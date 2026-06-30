@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import MachineUnit
+from machine_sim.analysis.correlation import SignalCorrelator
 from machine_sim.environment.world import World
 from machine_sim.guardrails.runtime import (
     StateViolation,
@@ -32,6 +33,9 @@ class SimEngine:
         self.event_log = EventLog()
         self.tick_count = 0
         self.max_ticks = config.max_ticks
+        self.correlator = SignalCorrelator(
+            observation_window=config.signal_observation_window
+        )
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -98,6 +102,13 @@ class SimEngine:
                             unit_id=unit.unit_id,
                             data=result.data,
                         ))
+                        # Record for correlation analysis
+                        self.correlator.record_signal_emission(
+                            tick=self.tick_count,
+                            unit_id=unit.unit_id,
+                            pattern_id=result.data.get("pattern_id", 0),
+                            data=result.data,
+                        )
 
         # Phase 3b: Proximity detection and spatial pressure
         for unit in self.units:
@@ -111,6 +122,13 @@ class SimEngine:
                         unit_id=unit.unit_id,
                         data={"nearby_count": nearby_count, "spatial_pressure": spatial_pressure},
                     ))
+                    # Record for correlation analysis
+                    self.correlator.record_observation(
+                        tick=self.tick_count,
+                        unit_id=unit.unit_id,
+                        observation_type="proximity",
+                        data={"nearby_count": nearby_count, "spatial_pressure": spatial_pressure},
+                    )
 
         # Phase 3c: Signal sensing (source units excluded from own signals)
         for unit in self.units:
@@ -138,6 +156,14 @@ class SimEngine:
                 hazard_events = self.world.apply_hazard_damage(unit, self.tick_count)
                 for e in hazard_events:
                     self._record_event(e)
+                    # Record hazard encounters for correlation analysis
+                    if e.event_type == EventType.HAZARD_ENCOUNTER:
+                        self.correlator.record_observation(
+                            tick=self.tick_count,
+                            unit_id=unit.unit_id,
+                            observation_type="hazard_encounter",
+                            data=e.data,
+                        )
 
         # Phase 6: Validate state
         for unit in self.units:
@@ -147,9 +173,16 @@ class SimEngine:
         self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_END))
 
     def snapshot(self) -> SimulationState:
+        # Compute final associations
+        self.correlator.compute_associations()
         return SimulationState(
             tick=self.tick_count,
             agents=[u.state_copy() for u in self.units],
             world=self.world.snapshot(),
             events=self.event_log.all_events(),
         )
+
+    def get_correlation_summary(self) -> Dict[str, Any]:
+        """Get signal correlation summary after simulation."""
+        self.correlator.compute_associations()
+        return self.correlator.get_summary()

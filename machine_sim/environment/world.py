@@ -335,6 +335,7 @@ class World:
         radius = params.get("radius", 3)
         decay_rate = params.get("decay_rate", 0.1)
         duration = params.get("duration", 10)
+        energy_cost = params.get("energy_cost", 2.0)
 
         sig = self.emit_signal(
             source_unit_id=unit.unit_id,
@@ -348,7 +349,7 @@ class World:
         )
 
         return ActionResult(
-            success=True, power_delta=-2.0,
+            success=True, power_delta=-energy_cost,
             event_type="emit_signal",
             data={
                 "signal_id": sig.signal_id,

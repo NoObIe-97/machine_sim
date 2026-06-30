@@ -23,12 +23,19 @@
 - Machine-native event logging
 - Deterministic replay
 
-## Milestone 4: Signal Correlation and Statistical Association
-- Signal pattern correlation across ticks
-- Temporal signal clustering
-- Signal density mapping
-- Adaptive emission based on local signal environment
-- Still no semantic meaning assigned
+## Milestone 4: Signal Correlation and Statistical Association ✓
+- SignalCorrelator with bounded observation window
+- Temporal association computation
+- Per-pattern co-occurrence statistics
+- Engine integration with correlation recording
+- CLI correlation summary output
+- Signal energy cost wiring fix
+
+## Milestone 5: Adaptive Signal Response
+- Units adjust emission based on local signal density
+- Emission frequency adaptation
+- Signal-triggered behavioral shifts (non-semantic)
+- Still no meaning or communication
 
 ## Milestone 5: Reproduction and Design Inheritance
 - Unit replication (copy parameters + noise)

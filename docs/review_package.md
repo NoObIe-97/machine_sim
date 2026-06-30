@@ -1,4 +1,4 @@
-# Milestone 3 Review Package
+# Milestone 4 Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
@@ -10,6 +10,7 @@
 - `2870d38` — Milestone 2B event-label cleanup (6 files, 52 insertions)
 - `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
 - `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
+- PENDING — Milestone 4 signal correlation (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -78,17 +79,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 3A)
+## Test Results (Milestone 4)
 
 ```
-94 passed in 2.39s
+111 passed in 4.46s
 ```
 
-## Coverage Report (Milestone 3A)
+## Coverage Report (Milestone 4)
 
 ```
-TOTAL    865    107    88%
-Total coverage: 87.63%
+TOTAL    885    102    88%
+Total coverage: 88.47%
 ```
 
 ## Guardrail Output
@@ -132,6 +133,24 @@ Total events: 1244
   SIGNAL_EMITTED: 28
 ```
 
+## Demo Output — Milestone 4 Correlation (100 ticks, 12x12, 5 units)
+
+```
+Total events: 1246
+  UNIT_ACTION: 411
+  UNIT_PROXIMITY: 321
+  SIGNAL_RECEIVED: 113
+  RESOURCE_DEPLETED: 99
+  MOVEMENT_BLOCKED: 41
+  SIGNAL_EMITTED: 34
+  HAZARD_ENCOUNTER: 27
+
+Signal correlation: 34 emissions, 348 observations, 270 associations
+  Pattern 1: 13 emissions, 100 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
+  Pattern 0: 11 emissions, 90 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
+  Pattern 2: 10 emissions, 80 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
+```
+
 ## Demo Artifact Policy
 
 `output/` is **intentionally ignored** via `.gitignore`. Demo artifacts are generated locally using deterministic seed (42) but not committed.
@@ -141,6 +160,7 @@ Total events: 1244
 - `docs/milestone_1a_report.md` — hardening patch report
 - `docs/milestone_2_report.md` — Milestone 2 interaction substrate report
 - `docs/milestone_3_report.md` — Milestone 3 signaling substrate report
+- `docs/milestone_4_report.md` — Milestone 4 correlation analysis report
 
 ## Clean Working Tree
 Pending commit of this patch.

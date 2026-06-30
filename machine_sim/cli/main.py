@@ -65,11 +65,25 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
     click.echo(f"Simulation complete. Tick {state.tick}/{cfg.max_ticks}")
     click.echo(f"Active units: {active}/{cfg.unit_count}")
 
+    # Output correlation summary if signals are enabled
+    if cfg.signal_enabled:
+        corr_summary = engine.get_correlation_summary()
+        click.echo(f"Signal correlation: {corr_summary['total_emissions']} emissions, "
+                   f"{corr_summary['total_observations']} observations, "
+                   f"{corr_summary['total_associations']} associations")
+        for pid, stats in corr_summary.get("patterns", {}).items():
+            click.echo(f"  Pattern {pid}: {stats['emissions']} emissions, "
+                       f"{stats['observations']} observations, "
+                       f"scores={stats['co_occurrence_score']}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
         (outpath / "state.json").write_text(json.dumps(state.to_dict(), indent=2, default=str))
         (outpath / "events.json").write_text(engine.event_log.to_json())
+        if cfg.signal_enabled:
+            corr_summary = engine.get_correlation_summary()
+            (outpath / "correlation.json").write_text(json.dumps(corr_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

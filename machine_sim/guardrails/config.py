@@ -57,6 +57,7 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "unit_count", "power_drain_rate", "max_ticks", "seed",
     "signal_enabled", "signal_pattern_count", "signal_energy_cost",
     "signal_default_radius", "signal_default_decay", "signal_default_duration",
+    "signal_observation_window",
 }
 
 # Allowed memory event_type labels

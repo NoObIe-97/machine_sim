@@ -90,6 +90,7 @@ class MachineUnitImpl(MachineUnit):
                     "radius": self.signal_default_radius,
                     "decay_rate": self.signal_default_decay,
                     "duration": self.signal_default_duration,
+                    "energy_cost": self.signal_energy_cost,
                 },
             )
 
