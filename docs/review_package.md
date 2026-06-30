@@ -11,7 +11,7 @@
 - `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
 - `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
 - `4950310` — Milestone 4 signal correlation (12 files, 624 insertions)
-- PENDING — Milestone 5 adaptive signal control (this patch)
+- `49780f2` — Milestone 5 adaptive signal control (13 files, 932 insertions)
 
 ## Branch Name
 `feature/milestone-1`
