@@ -15,6 +15,7 @@
 - `04eab03` — Milestone 5A hardening (4 files, 126 insertions)
 - `cc68051` — Milestone 6 fabricated descent (12 files, 819 insertions)
 - `e7338c4` — Milestone 6A hardening (6 files, 146 insertions)
+- `670dedf` — Milestone 6B demo alignment (2 files, 39 insertions)
 
 ## Branch Name
 `feature/milestone-1`
