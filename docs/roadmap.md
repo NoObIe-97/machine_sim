@@ -40,11 +40,19 @@
 - CLI adaptive summary output
 - signal_energy_cost wiring fix
 
-## Milestone 6: Reproduction and Design Inheritance
-- Unit replication (copy parameters + noise)
-- Offspring placement
-- Design inheritance with variation
-- Population dynamics
+## Milestone 6: Reproduction and Design Inheritance ✓
+- FabricationEngine with resource/placement constraints
+- DesignTemplate with bounded variation
+- LineageRecord tracking
+- Population cap and dynamics
+- FABRICATION_SUCCEEDED/FAILED events
+- Fabrication summary artifacts
+
+## Milestone 7: Calibration Assist and Knowledge Transfer
+- Parameter calibration for successors
+- Experience capsule transfer
+- Calibration refinement through feedback
+- Knowledge accumulation across generations
 
 ## Milestone 5: Reproduction and Design Inheritance
 - Unit replication (copy parameters + noise)

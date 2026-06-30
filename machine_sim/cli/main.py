@@ -89,6 +89,17 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                        f"recent_emission_rate={summary['emission_rate']:.2f}, "
                        f"recent_scan_rate={summary['scan_rate']:.2f}")
 
+    # Output fabrication summary if enabled
+    if cfg.fabrication_enabled:
+        fab_summary = engine.get_fabrication_summary()
+        click.echo(f"Fabrication: {fab_summary['total_attempts']} attempts, "
+                   f"{fab_summary['total_successes']} successes, "
+                   f"{fab_summary['total_lineage_records']} lineage records")
+        if fab_summary['failures_by_cause']:
+            click.echo(f"  Failures: {fab_summary['failures_by_cause']}")
+        if fab_summary['generation_distribution']:
+            click.echo(f"  Generations: {fab_summary['generation_distribution']}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -100,6 +111,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.adaptive_enabled:
             adaptive_summary = engine.get_adaptive_summary()
             (outpath / "adaptive.json").write_text(json.dumps(adaptive_summary, indent=2))
+        if cfg.fabrication_enabled:
+            fab_summary = engine.get_fabrication_summary()
+            (outpath / "fabrication.json").write_text(json.dumps(fab_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

@@ -33,7 +33,7 @@ ALLOWED_COMPONENT_NAMES: Set[str] = {
 
 # Allowed action type names
 ALLOWED_ACTION_NAMES: Set[str] = {
-    "MOVE", "SCAN", "HARVEST", "COLLECT", "MAINTAIN", "IDLE", "EMIT_SIGNAL",
+    "MOVE", "SCAN", "HARVEST", "COLLECT", "MAINTAIN", "IDLE", "EMIT_SIGNAL", "FABRICATE",
 }
 
 # Allowed event type labels
@@ -49,6 +49,8 @@ ALLOWED_EVENT_LABELS: Set[str] = {
     "movement_blocked", "unit_proximity",
     # Milestone 3 signal event types
     "emit_signal", "signal_emitted", "signal_received",
+    # Milestone 6 fabrication event types
+    "fabrication_attempted", "fabrication_succeeded", "fabrication_failed",
 }
 
 # Allowed config keys
@@ -58,6 +60,8 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "signal_enabled", "signal_pattern_count", "signal_energy_cost",
     "signal_default_radius", "signal_default_decay", "signal_default_duration",
     "signal_observation_window", "adaptive_enabled",
+    "fabrication_enabled", "population_cap", "fabrication_interval",
+    "fabrication_power_cost", "fabrication_material_cost", "fabrication_variation",
 }
 
 # Allowed memory event_type labels

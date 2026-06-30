@@ -28,6 +28,12 @@ class SimConfig:
     signal_default_duration: int = 10
     signal_observation_window: int = 10
     adaptive_enabled: bool = False
+    fabrication_enabled: bool = False
+    population_cap: int = 20
+    fabrication_interval: int = 25
+    fabrication_power_cost: float = 30.0
+    fabrication_material_cost: float = 5.0
+    fabrication_variation: float = 0.1
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

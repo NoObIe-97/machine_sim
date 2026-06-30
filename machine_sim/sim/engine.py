@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
+from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
 from machine_sim.guardrails.runtime import (
     StateViolation,
@@ -35,6 +36,13 @@ class SimEngine:
         self.max_ticks = config.max_ticks
         self.correlator = SignalCorrelator(
             observation_window=config.signal_observation_window
+        )
+        self.fabrication_engine = FabricationEngine(
+            population_cap=config.population_cap,
+            fabrication_interval=config.fabrication_interval,
+            power_cost=config.fabrication_power_cost,
+            material_cost=config.fabrication_material_cost,
+            variation_factor=config.fabrication_variation,
         )
 
     def register_unit(self, unit: MachineUnit) -> None:
@@ -190,7 +198,63 @@ class SimEngine:
             if unit.is_active:
                 validate_agent_state(unit.state_copy())
 
+        # Phase 7: Fabrication (if enabled)
+        if self.config.fabrication_enabled:
+            new_units = []
+            for unit in self.units:
+                if unit.is_active:
+                    result = self.fabrication_engine.fabricate(
+                        unit, self.tick_count, self.world,
+                        len(self.units) + len(new_units), self.rng
+                    )
+                    if result.success:
+                        # Create successor unit from design template
+                        from machine_sim.agents.unit import MachineUnitImpl
+                        template = self.fabrication_engine._create_template(unit, self.rng)
+                        placement = self.fabrication_engine._find_placement(
+                            unit.position, self.world
+                        )
+                        successor = MachineUnitImpl(
+                            unit_id=result.successor_id,
+                            position=placement or unit.position,
+                            signal_enabled=template.signal_enabled,
+                            signal_pattern_count=template.signal_pattern_count,
+                            signal_energy_cost=template.signal_energy_cost,
+                            signal_default_radius=template.signal_default_radius,
+                            signal_default_decay=template.signal_default_decay,
+                            signal_default_duration=template.signal_default_duration,
+                            adaptive_enabled=template.adaptive_enabled,
+                        )
+                        successor._generation_index = getattr(unit, '_generation_index', 0) + 1
+                        new_units.append(successor)
+                        self._record_event(Event(
+                            tick=self.tick_count,
+                            event_type=EventType.FABRICATION_SUCCEEDED,
+                            unit_id=unit.unit_id,
+                            data={
+                                "successor_id": result.successor_id,
+                                "material_cost": result.material_cost,
+                                "power_cost": result.power_cost,
+                            },
+                        ))
+                    elif result.failure_cause:
+                        self._record_event(Event(
+                            tick=self.tick_count,
+                            event_type=EventType.FABRICATION_FAILED,
+                            unit_id=unit.unit_id,
+                            data={"cause": result.failure_cause},
+                        ))
+
+            # Register new units
+            for new_unit in new_units:
+                self.register_unit(new_unit)
+                self.world.place_unit(new_unit, self.rng)
+
         self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_END))
+
+    def get_fabrication_summary(self) -> Dict[str, Any]:
+        """Get fabrication and lineage summary."""
+        return self.fabrication_engine.get_summary()
 
     def snapshot(self) -> SimulationState:
         # Compute final associations

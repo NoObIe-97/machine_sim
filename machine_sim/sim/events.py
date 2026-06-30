@@ -23,6 +23,9 @@ class EventType(Enum):
     UNIT_PROXIMITY = auto()
     SIGNAL_EMITTED = auto()
     SIGNAL_RECEIVED = auto()
+    FABRICATION_ATTEMPTED = auto()
+    FABRICATION_SUCCEEDED = auto()
+    FABRICATION_FAILED = auto()
 
 
 @dataclass(frozen=True, slots=True)

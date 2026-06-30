@@ -18,6 +18,7 @@ class ActionType(Enum):
     MAINTAIN = auto()
     IDLE = auto()
     EMIT_SIGNAL = auto()
+    FABRICATE = auto()
 
 
 @dataclass(frozen=True, slots=True)
