@@ -1,4 +1,4 @@
-# Milestone 4 Review Package
+# Milestone 5 Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
@@ -11,6 +11,7 @@
 - `48877f0` — Milestone 3 non-semantic signaling (14 files, 620 insertions)
 - `fb23d44` — Milestone 3A hardening (7 files, 84 insertions)
 - `4950310` — Milestone 4 signal correlation (12 files, 624 insertions)
+- PENDING — Milestone 5 adaptive signal control (this patch)
 
 ## Branch Name
 `feature/milestone-1`
@@ -79,17 +80,17 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 4)
+## Test Results (Milestone 5)
 
 ```
-111 passed in 4.46s
+137 passed in 4.13s
 ```
 
-## Coverage Report (Milestone 4)
+## Coverage Report (Milestone 5)
 
 ```
-TOTAL    885    102    88%
-Total coverage: 88.47%
+TOTAL    936    111    88%
+Total coverage: 88.14%
 ```
 
 ## Guardrail Output
@@ -161,6 +162,7 @@ Signal correlation: 34 emissions, 348 observations, 270 associations
 - `docs/milestone_2_report.md` — Milestone 2 interaction substrate report
 - `docs/milestone_3_report.md` — Milestone 3 signaling substrate report
 - `docs/milestone_4_report.md` — Milestone 4 correlation analysis report
+- `docs/milestone_5_report.md` — Milestone 5 adaptive signal control report
 
 ## Clean Working Tree
 Pending commit of this patch.

@@ -27,6 +27,7 @@ class SimConfig:
     signal_default_decay: float = 0.1
     signal_default_duration: int = 10
     signal_observation_window: int = 10
+    adaptive_enabled: bool = False
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

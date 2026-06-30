@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from machine_sim.agents.base import MachineUnit
+from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
 from machine_sim.environment.world import World
 from machine_sim.guardrails.runtime import (
@@ -94,6 +94,9 @@ class SimEngine:
                             unit_id=unit.unit_id,
                             data=result.data,
                         ))
+                        # Record for field tracker
+                        if hasattr(unit, '_field_tracker'):
+                            unit._field_tracker.record_movement_block(self.tick_count)
                     # Emit signal events
                     if result.event_type == "emit_signal":
                         self._record_event(Event(
@@ -109,6 +112,13 @@ class SimEngine:
                             pattern_id=result.data.get("pattern_id", 0),
                             data=result.data,
                         )
+                        # Record for field tracker
+                        if hasattr(unit, '_field_tracker'):
+                            unit._field_tracker.record_emission(self.tick_count)
+                    # Record scans for field tracker
+                    if action.action_type == ActionType.SCAN:
+                        if hasattr(unit, '_field_tracker'):
+                            unit._field_tracker.record_scan(self.tick_count)
 
         # Phase 3b: Proximity detection and spatial pressure
         for unit in self.units:
@@ -134,7 +144,7 @@ class SimEngine:
         for unit in self.units:
             if unit.is_active:
                 signal_obs = self.world.sense_signals(unit.position, unit.sensor_range,
-                                                      exclude_unit_id=unit.unit_id)
+                                                       exclude_unit_id=unit.unit_id)
                 for obs in signal_obs:
                     self._record_event(Event(
                         tick=self.tick_count,
@@ -142,6 +152,13 @@ class SimEngine:
                         unit_id=unit.unit_id,
                         data=obs,
                     ))
+                    # Record for field tracker
+                    if hasattr(unit, '_field_tracker'):
+                        unit._field_tracker.record_signal_observation(
+                            self.tick_count,
+                            obs.get("pattern_id", 0),
+                            obs.get("intensity", 0.0),
+                        )
 
         # Phase 4: Unit degradation (variant-specific drain)
         for unit in self.units:
@@ -164,6 +181,9 @@ class SimEngine:
                             observation_type="hazard_encounter",
                             data=e.data,
                         )
+                        # Record for field tracker
+                        if hasattr(unit, '_field_tracker'):
+                            unit._field_tracker.record_hazard_event(self.tick_count)
 
         # Phase 6: Validate state
         for unit in self.units:
@@ -186,3 +206,22 @@ class SimEngine:
         """Get signal correlation summary after simulation."""
         self.correlator.compute_associations()
         return self.correlator.get_summary()
+
+    def get_adaptive_summary(self) -> Dict[str, Any]:
+        """Get adaptive behavior summary for all units."""
+        summaries = {}
+        for unit in self.units:
+            if hasattr(unit, '_field_tracker'):
+                field_summary = unit._field_tracker.get_summary(self.tick_count)
+                summaries[unit.unit_id] = {
+                    "signal_count": field_summary.recent_signal_count,
+                    "pattern_frequency": dict(field_summary.pattern_frequency),
+                    "avg_intensity": field_summary.avg_received_intensity,
+                    "hazard_density": field_summary.local_hazard_density,
+                    "proximity_count": field_summary.local_proximity_count,
+                    "movement_blocks": field_summary.recent_movement_blocks,
+                    "emission_rate": field_summary.emission_rate,
+                    "scan_rate": field_summary.scan_rate,
+                    "adaptive_enabled": getattr(unit, 'adaptive_enabled', False),
+                }
+        return summaries

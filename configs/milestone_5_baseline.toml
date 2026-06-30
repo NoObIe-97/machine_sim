@@ -1,0 +1,17 @@
+[simulation]
+grid_width = 12
+grid_height = 12
+resource_density = 0.25
+hazard_density = 0.1
+unit_count = 5
+power_drain_rate = 0.8
+max_ticks = 150
+seed = 42
+signal_enabled = true
+signal_pattern_count = 3
+signal_energy_cost = 2.0
+signal_default_radius = 4
+signal_default_decay = 0.15
+signal_default_duration = 8
+signal_observation_window = 10
+adaptive_enabled = false

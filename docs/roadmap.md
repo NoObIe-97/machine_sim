@@ -31,11 +31,20 @@
 - CLI correlation summary output
 - Signal energy cost wiring fix
 
-## Milestone 5: Adaptive Signal Response
-- Units adjust emission based on local signal density
-- Emission frequency adaptation
-- Signal-triggered behavioral shifts (non-semantic)
-- Still no meaning or communication
+## Milestone 5: Adaptive Signal Response ✓
+- LocalFieldTracker with bounded window statistics
+- AdaptiveEmissionPolicy (interval, intensity, radius, pattern selection)
+- AdaptiveScanPolicy (scan cadence)
+- Improved association scores (lag-weighted, confidence, normalized rate)
+- Engine integration with adaptive behavior tracking
+- CLI adaptive summary output
+- signal_energy_cost wiring fix
+
+## Milestone 6: Reproduction and Design Inheritance
+- Unit replication (copy parameters + noise)
+- Offspring placement
+- Design inheritance with variation
+- Population dynamics
 
 ## Milestone 5: Reproduction and Design Inheritance
 - Unit replication (copy parameters + noise)

@@ -53,6 +53,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             signal_default_radius=cfg.signal_default_radius,
             signal_default_decay=cfg.signal_default_decay,
             signal_default_duration=cfg.signal_default_duration,
+            adaptive_enabled=cfg.adaptive_enabled,
         )
         engine.register_unit(unit)
 
@@ -74,7 +75,17 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         for pid, stats in corr_summary.get("patterns", {}).items():
             click.echo(f"  Pattern {pid}: {stats['emissions']} emissions, "
                        f"{stats['observations']} observations, "
-                       f"scores={stats['co_occurrence_score']}")
+                       f"lag_weighted={stats.get('lag_weighted_score', {})}")
+
+    # Output adaptive summary if enabled
+    if cfg.adaptive_enabled:
+        adaptive_summary = engine.get_adaptive_summary()
+        click.echo("Adaptive behavior summary:")
+        for uid, summary in adaptive_summary.items():
+            click.echo(f"  {uid}: signals={summary['signal_count']}, "
+                       f"hazard_density={summary['hazard_density']:.2f}, "
+                       f"emission_rate={summary['emission_rate']:.2f}, "
+                       f"scan_rate={summary['scan_rate']:.2f}")
 
     if output:
         outpath = Path(output)
@@ -84,6 +95,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.signal_enabled:
             corr_summary = engine.get_correlation_summary()
             (outpath / "correlation.json").write_text(json.dumps(corr_summary, indent=2))
+        if cfg.adaptive_enabled:
+            adaptive_summary = engine.get_adaptive_summary()
+            (outpath / "adaptive.json").write_text(json.dumps(adaptive_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

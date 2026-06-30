@@ -30,6 +30,10 @@ class PatternAssociation:
     observation_counts: Dict[str, int] = field(default_factory=dict)
     avg_lag: Dict[str, float] = field(default_factory=dict)
     co_occurrence_score: Dict[str, float] = field(default_factory=dict)
+    # Improved metrics
+    lag_weighted_score: Dict[str, float] = field(default_factory=dict)
+    normalized_rate: Dict[str, float] = field(default_factory=dict)
+    confidence: Dict[str, float] = field(default_factory=dict)
 
 
 class SignalCorrelator:
@@ -114,11 +118,32 @@ class SignalCorrelator:
                 continue
             for obs_type, lags in type_lags.items():
                 stats.avg_lag[obs_type] = sum(lags) / len(lags) if lags else 0.0
-                # Co-occurrence score: observations per emission (bounded 0-1)
+                obs_count = stats.observation_counts.get(obs_type, 0)
+
+                # Co-occurrence score: observations per emission (capped 0-1)
                 if stats.total_emissions > 0:
                     stats.co_occurrence_score[obs_type] = min(
-                        1.0, stats.observation_counts.get(obs_type, 0) / stats.total_emissions
+                        1.0, obs_count / stats.total_emissions
                     )
+
+                # Lag-weighted score: observations weighted by inverse lag
+                if lags:
+                    lag_weights = [1.0 / max(1, lag) for lag in lags]
+                    stats.lag_weighted_score[obs_type] = min(
+                        1.0, sum(lag_weights) / stats.total_emissions
+                    )
+
+                # Normalized rate: observations per emission per window tick
+                if stats.total_emissions > 0 and self.observation_window > 0:
+                    stats.normalized_rate[obs_type] = min(
+                        1.0, obs_count / (stats.total_emissions * self.observation_window)
+                    )
+
+                # Confidence: based on sample count (log-scaled)
+                import math
+                stats.confidence[obs_type] = min(
+                    1.0, math.log1p(obs_count) / math.log1p(max(1, stats.total_emissions))
+                )
 
         return self._pattern_stats
 
@@ -137,6 +162,9 @@ class SignalCorrelator:
                     "observation_counts": dict(s.observation_counts),
                     "avg_lag": dict(s.avg_lag),
                     "co_occurrence_score": dict(s.co_occurrence_score),
+                    "lag_weighted_score": dict(s.lag_weighted_score),
+                    "normalized_rate": dict(s.normalized_rate),
+                    "confidence": dict(s.confidence),
                 }
                 for pid, s in stats.items()
             },
