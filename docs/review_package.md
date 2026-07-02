@@ -19,6 +19,7 @@
 - `79ad9f6` — Milestone 7 calibration capsules (12 files, 595 insertions)
 - `4e16d9e` — Milestone 7A capsule impact comparison (3 files, 211 insertions)
 - `032e46c` — Milestone 7B impact evidence and documentation sync (5 files, 107 insertions)
+- `c5ff0bc` — Milestone 7C final test assertion and documentation cleanup (2 files, 17 insertions)
 
 ## Branch Name
 `feature/milestone-1`
