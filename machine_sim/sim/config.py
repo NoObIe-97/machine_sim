@@ -34,6 +34,7 @@ class SimConfig:
     fabrication_power_cost: float = 30.0
     fabrication_material_cost: float = 5.0
     fabrication_variation: float = 0.1
+    capsule_enabled: bool = False
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

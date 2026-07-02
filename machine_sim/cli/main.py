@@ -99,6 +99,10 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             click.echo(f"  Failures: {fab_summary['failures_by_cause']}")
         if fab_summary['generation_distribution']:
             click.echo(f"  Generations: {fab_summary['generation_distribution']}")
+        if cfg.capsule_enabled and 'capsules' in fab_summary:
+            cap_summary = fab_summary['capsules']
+            click.echo(f"  Capsules: {cap_summary['total_capsules']} generated, "
+                       f"avg_sparsity={cap_summary['avg_sparsity']:.2f}")
 
     if output:
         outpath = Path(output)
@@ -114,6 +118,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.fabrication_enabled:
             fab_summary = engine.get_fabrication_summary()
             (outpath / "fabrication.json").write_text(json.dumps(fab_summary, indent=2))
+        if cfg.capsule_enabled:
+            capsule_summary = engine.get_capsule_summary()
+            (outpath / "capsules.json").write_text(json.dumps(capsule_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

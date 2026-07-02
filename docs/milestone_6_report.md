@@ -106,20 +106,11 @@ Total coverage: 86.45%
 
 ## Demo Output Summary
 
-### Milestone 6 Fabrication Demo (250 ticks, 15x15, 4 units)
+### Milestone 6 Fabrication Demo (200 ticks, 20x20, 3 units)
 ```
-Total events: 2245
-  UNIT_ACTION: 629
-  FABRICATION_FAILED: 617
-  FABRICATION_SUCCEEDED: 4
-  RESOURCE_DEPLETED: 233
-  UNIT_PROXIMITY: 144
-  SIGNAL_RECEIVED: 69
-  SIGNAL_EMITTED: 49
-
-Fabrication: 621 attempts, 4 successes, 4 lineage records
-  Failures: {'insufficient_material': 105, 'fabrication_cooldown': 31, 'insufficient_power': 481}
-  Generations: {1: 2, 2: 2}
+Fabrication: 985 attempts, 9 successes, 9 lineage records
+  Failures: {'insufficient_material': 77, 'fabrication_cooldown': 31, 'insufficient_power': 19, 'population_capacity': 849}
+  Generations: {1: 2, 2: 2, 3: 2, 4: 3}
 ```
 
 ## Known Limitations

@@ -48,11 +48,19 @@
 - FABRICATION_SUCCEEDED/FAILED events
 - Fabrication summary artifacts
 
-## Milestone 7: Calibration Assist and Knowledge Transfer
-- Parameter calibration for successors
-- Experience capsule transfer
-- Calibration refinement through feedback
-- Knowledge accumulation across generations
+## Milestone 7: Calibration Assist and Knowledge Transfer ✓
+- CalibrationCapsule with bounded source/world statistics
+- CapsuleGenerator for deterministic capsule creation
+- Warm-start application to successor units
+- CapsuleManager for storage and summary
+- Capsule artifact output (capsules.json)
+- 8 new tests for capsule mechanics
+
+## Milestone 8: Distributed Operational Memory
+- Persistent memory across ticks
+- Memory sharing via physical proximity
+- Distributed consensus primitives
+- Memory corruption and repair
 
 ## Milestone 5: Reproduction and Design Inheritance
 - Unit replication (copy parameters + noise)

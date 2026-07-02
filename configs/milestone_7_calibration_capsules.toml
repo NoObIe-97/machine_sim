@@ -1,0 +1,24 @@
+[simulation]
+grid_width = 20
+grid_height = 20
+resource_density = 0.5
+hazard_density = 0.01
+unit_count = 3
+power_drain_rate = 0.4
+max_ticks = 200
+seed = 42
+signal_enabled = false
+signal_pattern_count = 3
+signal_energy_cost = 2.0
+signal_default_radius = 3
+signal_default_decay = 0.15
+signal_default_duration = 8
+signal_observation_window = 10
+adaptive_enabled = false
+fabrication_enabled = true
+population_cap = 12
+fabrication_interval = 8
+fabrication_power_cost = 10.0
+fabrication_material_cost = 2.0
+fabrication_variation = 0.1
+capsule_enabled = true

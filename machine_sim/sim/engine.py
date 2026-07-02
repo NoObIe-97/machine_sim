@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
+from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
 from machine_sim.guardrails.runtime import (
@@ -44,6 +45,7 @@ class SimEngine:
             material_cost=config.fabrication_material_cost,
             variation_factor=config.fabrication_variation,
         )
+        self.capsule_manager = CapsuleManager(enabled=config.capsule_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -225,6 +227,15 @@ class SimEngine:
                         successor.max_power = tmpl.max_power
                         successor.SENSOR_RANGE = tmpl.sensor_range
                         successor._generation_index = getattr(unit, '_generation_index', 0) + 1
+
+                        # Generate and apply calibration capsule
+                        if self.capsule_manager.enabled:
+                            capsule = self.capsule_manager.generate_and_store(
+                                unit, self.world, result.successor_id, self.tick_count
+                            )
+                            self.capsule_manager.generator.apply_warm_start(capsule, successor)
+                            result.capsule = capsule
+
                         new_units.append(successor)
                         self._record_event(Event(
                             tick=self.tick_count,
@@ -237,6 +248,7 @@ class SimEngine:
                                 "power_cost": result.power_cost,
                                 "max_power": tmpl.max_power,
                                 "sensor_range": tmpl.sensor_range,
+                                "capsule_applied": self.capsule_manager.enabled,
                             },
                         ))
                     elif result.failure_cause:
@@ -256,7 +268,14 @@ class SimEngine:
 
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
-        return self.fabrication_engine.get_summary()
+        summary = self.fabrication_engine.get_summary()
+        if self.capsule_manager.enabled:
+            summary["capsules"] = self.capsule_manager.get_summary()
+        return summary
+
+    def get_capsule_summary(self) -> Dict[str, Any]:
+        """Get capsule summary for artifact output."""
+        return self.capsule_manager.get_summary()
 
     def snapshot(self) -> SimulationState:
         # Compute final associations

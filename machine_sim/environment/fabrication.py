@@ -46,6 +46,7 @@ class FabricationResult:
     failure_cause: str = ""
     placement: Optional[Tuple[int, int]] = None
     template: Optional[DesignTemplate] = None
+    capsule: Any = None  # CalibrationCapsule if capsule_enabled
     material_cost: float = 0.0
     power_cost: float = 0.0
     design_distance: float = 0.0
