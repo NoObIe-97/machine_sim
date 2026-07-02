@@ -1,4 +1,4 @@
-# Milestone 9 Final Review Package
+# Milestone 10 Final Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation
@@ -26,6 +26,8 @@
 - `7b876fe` — Milestone 9 resource pressure
 - `b60a50e` — Milestone 9A test hardening
 - `3173b3f` — Milestone 10 signal pattern field dynamics
+- `24261e9` — Milestone 10A gradient exposure
+- `78a4ee7` — Milestone 10B test hardening
 
 ## Branch Name
 `feature/milestone-1`
@@ -34,15 +36,15 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-186 passed in 16.09s
+194 passed in 16.14s
 
 ## Coverage (Final)
-83.30%
+83.06%
 
 ## Guardrail Result
 All guardrail checks passed.
 
-## M1–M9 Regression Summary
+## M1–M10 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -57,22 +59,17 @@ All guardrail checks passed.
 | M7 compare | warm_start_power_delta +1.8906 |
 | M8 | 50 frames, 182 reconciliation, 5 drift entries |
 | M9 | 5 pressure cells, avg_depletion=0.366, max_pressure=0.760 |
-
-## M9 Pressure Output
-```
-Resource pressure: cells=5, avg_depletion=0.366, max_pressure=0.760
-Extraction load: total=5, peak_load=0.890, avg_load=1.000
-Proximity pressure: avg=0.320, max=0.600, blocked_rate=17.000
-Field perturbation: density=278.0, perturbation=88.960
-```
+| M10 | 3 patterns, 30 signals, 4 clusters, avg_score=12.295, gradient cells=4 |
 
 ## Artifact Paths
+- `output/demo_m10/signal_field_dynamics.json`
+- `output/demo_m9/pressure_analysis.json`
 - `output/demo_m8/telemetry.json`
 - `output/demo_m8/reconciliation.json`
 - `output/demo_m8/lineage_drift.json`
-- `output/demo_m9/pressure_analysis.json`
 
 ## Report Paths
+- `docs/milestone_10_report.md`
 - `docs/milestone_9_report.md`
 - `docs/milestone_8_report.md`
 - `docs/milestone_7_report.md`
