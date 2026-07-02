@@ -202,7 +202,48 @@ class CapsuleManager:
                     "source_hazard_density": c.source_hazard_density,
                     "source_signal_count": c.source_signal_count,
                     "local_resource_density": c.local_resource_density,
+                    "applied_sensor_calibration": c.initial_sensor_calibration,
+                    "applied_power_bias": c.initial_power_bias,
                 }
                 for c in self._capsules
             ],
         }
+
+
+def compute_capsule_impact(
+    capsule_enabled_units: List[Any],
+    capsule_disabled_units: List[Any],
+) -> Dict[str, Any]:
+    """Compare capsule-enabled vs capsule-disabled successor units.
+
+    Returns neutral machine-native metrics showing measurable differences.
+    """
+    def unit_stats(units: List[Any]) -> Dict[str, Any]:
+        if not units:
+            return {"count": 0, "avg_power": 0.0, "avg_sensor_health": 0.0,
+                    "active_count": 0, "capsule_applied_count": 0}
+        active = [u for u in units if u.is_active]
+        power_vals = [u.power_reserve for u in units]
+        sensor_vals = [u.components.get("sensor", type("", (), {"health": 0.0})()).health
+                       for u in units]
+        capsule_count = sum(1 for u in units if getattr(u, '_capsule_applied', False))
+        return {
+            "count": len(units),
+            "avg_power": sum(power_vals) / len(power_vals) if power_vals else 0.0,
+            "avg_sensor_health": sum(sensor_vals) / len(sensor_vals) if sensor_vals else 0.0,
+            "active_count": len(active),
+            "capsule_applied_count": capsule_count,
+        }
+
+    enabled_stats = unit_stats(capsule_enabled_units)
+    disabled_stats = unit_stats(capsule_disabled_units)
+
+    return {
+        "capsule_enabled": enabled_stats,
+        "capsule_disabled": disabled_stats,
+        "delta": {
+            "power_diff": enabled_stats["avg_power"] - disabled_stats["avg_power"],
+            "sensor_health_diff": enabled_stats["avg_sensor_health"] - disabled_stats["avg_sensor_health"],
+            "active_count_diff": enabled_stats["active_count"] - disabled_stats["active_count"],
+        },
+    }

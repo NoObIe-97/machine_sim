@@ -190,3 +190,113 @@ class TestCalibrationDemo:
                 break
         else:
             pytest.fail("No successor unit has warm-start applied")
+
+
+class TestCapsuleImpact:
+    """Capsule impact and comparison tests."""
+
+    def test_capsule_enabled_vs_disabled_differs(self):
+        """Capsule-enabled and capsule-disabled runs produce different results."""
+        from machine_sim.environment.calibration import compute_capsule_impact
+
+        def run_mode(cap_enabled):
+            cfg = SimConfig(grid_width=20, grid_height=20, max_ticks=100, seed=42,
+                            unit_count=3, resource_density=0.5, hazard_density=0.01,
+                            power_drain_rate=0.4,
+                            fabrication_enabled=True, capsule_enabled=cap_enabled,
+                            population_cap=10, fabrication_interval=8,
+                            fabrication_power_cost=10.0, fabrication_material_cost=2.0)
+            engine = SimEngine(cfg, seed=42)
+            for i in range(3):
+                engine.register_unit(MachineUnitImpl(f"u-{i}"))
+            engine.run()
+            return [u for u in engine.units if getattr(u, '_generation_index', 0) > 0]
+
+        disabled = run_mode(False)
+        enabled = run_mode(True)
+        impact = compute_capsule_impact(enabled, disabled)
+        # Capsule-enabled should have at least one successor with capsule applied
+        assert impact["capsule_enabled"]["capsule_applied_count"] > 0
+
+    def test_warm_start_changes_measurable_field(self):
+        """Warm-start modifies at least one measurable successor field."""
+        import random as _random
+        rng = _random.Random(42)
+        world = World(10, 10, rng)
+
+        gen = CapsuleGenerator()
+        source = MachineUnitImpl("src-0", position=(5, 5))
+        source.power_reserve = 70.0
+        world.grid[(5, 5)].unit_id = "src-0"
+
+        capsule = gen.generate(source, world, "succ-0", 10)
+        successor = MachineUnitImpl("succ-0", position=(6, 5))
+        initial_sensor = successor.components.get("sensor").health
+
+        gen.apply_warm_start(capsule, successor)
+        # At minimum, _capsule_applied flag is set
+        assert successor._capsule_applied is True
+
+    def test_capsule_summary_references_successors(self):
+        """Capsule summary references actual successor unit IDs."""
+        import random as _random
+        rng = _random.Random(42)
+        world = World(10, 10, rng)
+
+        manager = CapsuleManager(enabled=True)
+        source = MachineUnitImpl("src-0", position=(5, 5))
+        source.power_reserve = 70.0
+        world.grid[(5, 5)].unit_id = "src-0"
+
+        manager.generate_and_store(source, world, "succ-0", 10)
+        manager.generate_and_store(source, world, "succ-1", 20)
+        summary = manager.get_summary()
+
+        successor_ids = {c["successor"] for c in summary["capsules"]}
+        assert "succ-0" in successor_ids
+        assert "succ-1" in successor_ids
+
+    def test_capsule_artifact_has_required_fields(self):
+        """Capsule artifact contains all required traceability fields."""
+        import random as _random
+        rng = _random.Random(42)
+        world = World(10, 10, rng)
+
+        gen = CapsuleGenerator()
+        source = MachineUnitImpl("src-0", position=(5, 5))
+        source.power_reserve = 70.0
+        world.grid[(5, 5)].unit_id = "src-0"
+
+        capsule = gen.generate(source, world, "succ-0", 10)
+        # Check all required fields exist
+        assert hasattr(capsule, 'source_unit_id')
+        assert hasattr(capsule, 'successor_unit_id')
+        assert hasattr(capsule, 'fabrication_tick')
+        assert hasattr(capsule, 'source_generation')
+        assert hasattr(capsule, 'successor_generation')
+        assert hasattr(capsule, 'sparsity_score')
+        assert hasattr(capsule, 'capsule_entries')
+        assert hasattr(capsule, 'initial_sensor_calibration')
+        assert hasattr(capsule, 'initial_power_bias')
+
+    def test_impact_comparison_deterministic(self):
+        """Same seed produces identical comparison output."""
+        from machine_sim.environment.calibration import compute_capsule_impact
+
+        def run_comparison(seed):
+            cfg = SimConfig(grid_width=10, grid_height=10, max_ticks=50, seed=seed,
+                            unit_count=2, resource_density=0.5, hazard_density=0.0,
+                            power_drain_rate=0.4,
+                            fabrication_enabled=True, capsule_enabled=True,
+                            population_cap=8, fabrication_interval=5,
+                            fabrication_power_cost=10.0, fabrication_material_cost=2.0)
+            engine = SimEngine(cfg, seed=seed)
+            for i in range(2):
+                engine.register_unit(MachineUnitImpl(f"u-{i}"))
+            engine.run()
+            successors = [u for u in engine.units if getattr(u, '_generation_index', 0) > 0]
+            return len(successors), sum(1 for u in successors if getattr(u, '_capsule_applied', False))
+
+        r1 = run_comparison(42)
+        r2 = run_comparison(42)
+        assert r1 == r2

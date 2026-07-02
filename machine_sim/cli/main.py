@@ -229,5 +229,65 @@ def compare(config: str, ticks: int | None, seed: int) -> None:
         click.echo(f"  {metric:<20} {b:>10} {a:>10} {sign}{delta:>9}")
 
 
+@cli.command()
+@click.option("--config", "-c", type=click.Path(exists=True),
+              default="configs/milestone_7_calibration_capsules.toml")
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--seed", "-s", type=int, default=42)
+def capsule_compare(config: str, ticks: int | None, seed: int) -> None:
+    """Compare capsule-enabled vs capsule-disabled fabrication."""
+    from machine_sim.agents.unit import MachineUnitImpl as Unit
+    from machine_sim.environment.calibration import compute_capsule_impact
+
+    cfg = SimConfig.from_toml(Path(config))
+    if ticks is not None:
+        cfg.max_ticks = ticks
+
+    results = {}
+    for mode_name, cap_enabled in [("capsule_disabled", False), ("capsule_enabled", True)]:
+        cfg_copy = SimConfig(**cfg.to_dict())
+        cfg_copy.capsule_enabled = cap_enabled
+        engine = SimEngine(cfg_copy, seed=seed)
+        rng = random.Random(seed)
+        for i in range(cfg_copy.unit_count):
+            variant = ALL_VARIANTS[i % len(ALL_VARIANTS)]
+            unit = Unit(
+                unit_id=f"unit-{i:03d}",
+                position=(rng.randint(0, cfg_copy.grid_width - 1),
+                          rng.randint(0, cfg_copy.grid_height - 1)),
+                variant=variant,
+            )
+            engine.register_unit(unit)
+        state = engine.run()
+
+        # Collect successor units (those with generation_index > 0)
+        successors = [u for u in engine.units
+                      if getattr(u, '_generation_index', 0) > 0]
+
+        fab_summary = engine.get_fabrication_summary()
+        cap_summary = engine.get_capsule_summary()
+        results[mode_name] = {
+            "successor_count": len(successors),
+            "fab_successes": fab_summary["total_successes"],
+            "capsule_count": cap_summary["total_capsules"],
+            "successors": successors,
+        }
+
+    impact = compute_capsule_impact(
+        results["capsule_enabled"]["successors"],
+        results["capsule_disabled"]["successors"],
+    )
+
+    click.echo("Capsule Impact Comparison:")
+    click.echo(f"  {'Metric':<25} {'Disabled':>12} {'Enabled':>12} {'Delta':>12}")
+    click.echo(f"  {'-'*61}")
+    for key in ["count", "avg_power", "avg_sensor_health", "active_count"]:
+        d = impact["capsule_disabled"]
+        e = impact["capsule_enabled"]
+        click.echo(f"  {key:<25} {d[key]:>12.2f} {e[key]:>12.2f} {e[key]-d[key]:>+12.2f}")
+    click.echo(f"  {'capsule_applied':<25} {'N/A':>12} "
+               f"{impact['capsule_enabled']['capsule_applied_count']:>12}")
+
+
 if __name__ == "__main__":
     cli()
