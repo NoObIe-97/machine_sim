@@ -138,4 +138,4 @@ Signal gradient: cells=4, avg_gradient=1.180, max_gradient=3.701
 
 ## Next Recommended Milestone
 
-Milestone 11: Operational Memory Compression — bounded signal history compression, pattern摘要, cross-unit memory sharing, lineage memory inheritance.
+Milestone 11: Bounded Operational Trace Compression — compressed signal-field histories, telemetry-window reduction, capsule-compatible diagnostic summaries, lineage-indexed trace comparison, and bounded replay metrics.
