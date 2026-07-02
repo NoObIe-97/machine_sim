@@ -17,6 +17,7 @@
 - `e7338c4` — Milestone 6A hardening (6 files, 146 insertions)
 - `670dedf` — Milestone 6B demo alignment (2 files, 39 insertions)
 - `79ad9f6` — Milestone 7 calibration capsules (12 files, 595 insertions)
+- `4e16d9e` — Milestone 7A capsule impact comparison (3 files, 211 insertions)
 
 ## Branch Name
 `feature/milestone-1`
