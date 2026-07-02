@@ -145,6 +145,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         click.echo(f"Pattern correlation: records={dynamics['correlation_count']}, "
                    f"avg_score={dynamics['avg_correlation_score']:.3f}, "
                    f"max_score={dynamics['max_correlation_score']:.3f}")
+        click.echo(f"Signal gradient: cells={dynamics['signal_gradient_cells']}, "
+                   f"avg_gradient={dynamics['avg_signal_gradient']:.3f}, "
+                   f"max_gradient={dynamics['max_signal_gradient']:.3f}")
 
     if output:
         outpath = Path(output)

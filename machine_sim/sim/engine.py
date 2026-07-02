@@ -298,6 +298,9 @@ class SimEngine:
 
         # Phase 11: Signal field dynamics (record signals for analysis)
         if self.field_dynamics.enabled:
+            # Compute and store gradient
+            gradient = self.field_dynamics.compute_signal_gradient(self.world)
+            self.field_dynamics.record_gradient(gradient)
             # Record signals from correlator
             for sig_tick, sig_unit, pattern_id, sig_data in self.correlator._signal_history:
                 if sig_tick == self.tick_count:

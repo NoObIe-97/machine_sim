@@ -55,6 +55,7 @@ class SignalFieldDynamics:
         self._signal_history: List[Tuple[int, str, int, Dict[str, Any]]] = []
         self._observation_history: List[Tuple[int, str, str, Dict[str, Any]]] = []
         self._tick_count = 0
+        self._last_gradient: Optional[SignalGradient] = None
 
     def record_signal(self, tick: int, unit_id: str, pattern_id: int,
                       data: Dict[str, Any]) -> None:
@@ -201,11 +202,21 @@ class SignalFieldDynamics:
 
         return results
 
+    def record_gradient(self, gradient: SignalGradient) -> None:
+        """Record the latest signal gradient for summary inclusion."""
+        self._last_gradient = gradient
+
     def get_summary(self) -> Dict[str, Any]:
         """Get field dynamics summary."""
         patterns = self.compute_pattern_frequency()
         clusters = self.compute_density_clusters()
         correlations = self.compute_pattern_correlation()
+
+        # Gradient metrics
+        grad = self._last_gradient
+        gradient_cells = grad.cell_count if grad else 0
+        avg_gradient = grad.avg_gradient if grad else 0.0
+        max_gradient = grad.max_gradient if grad else 0.0
 
         return {
             "total_signals": len(self._signal_history),
@@ -229,6 +240,9 @@ class SignalFieldDynamics:
                 (c.avg_score for c in correlations),
                 default=0.0
             ) if correlations else 0.0,
+            "signal_gradient_cells": gradient_cells,
+            "avg_signal_gradient": avg_gradient,
+            "max_signal_gradient": max_gradient,
             "patterns": [
                 {
                     "pattern_id": p.pattern_id,
