@@ -25,6 +25,7 @@
 - `34739d7` — Milestone 8A verification hardening
 - `7b876fe` — Milestone 9 resource pressure
 - `b60a50e` — Milestone 9A test hardening
+- `3173b3f` — Milestone 10 signal pattern field dynamics
 
 ## Branch Name
 `feature/milestone-1`
