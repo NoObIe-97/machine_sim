@@ -245,20 +245,15 @@ class TestCapsuleImpact:
 
         capsule = gen.generate(source, world, "succ-0", 10)
         successor = MachineUnitImpl("succ-0", position=(6, 5))
-        initial_sensor = successor.components.get("sensor").health
 
         gen.apply_warm_start(capsule, successor)
-        # Verify warm-start effect is recorded with real deltas
+
+        # Assert warm-start effect is recorded with real nonzero deltas
         effect = successor._capsule_warm_start_effect
         assert effect is not None
-        assert "pre_sensor_health" in effect
-        assert "post_sensor_health" in effect
-        assert "sensor_health_delta" in effect
-        assert "pre_power_reserve" in effect
-        assert "post_power_reserve" in effect
-        assert "power_reserve_delta" in effect
-        # At least one delta should be nonzero if calibration values differ
-        # (sensor health may not change if already below calibration value)
+        assert abs(effect["power_reserve_delta"]) > 0.0 or \
+               abs(effect["sensor_health_delta"]) > 0.0, \
+            "Expected at least one nonzero warm-start delta"
         assert successor._capsule_applied is True
 
     def test_capsule_summary_references_successors(self):
