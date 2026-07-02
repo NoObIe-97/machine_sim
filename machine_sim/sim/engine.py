@@ -10,6 +10,7 @@ from machine_sim.analysis.correlation import SignalCorrelator
 from machine_sim.analysis.field_dynamics import SignalFieldDynamics
 from machine_sim.analysis.pressure import PressureAnalyzer
 from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
+from machine_sim.analysis.trace_compression import TraceCompressor
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
@@ -58,6 +59,7 @@ class SimEngine:
         self.lineage_drift = LineageDriftAnalyzer(enabled=config.lineage_drift_enabled)
         self.pressure_analyzer = PressureAnalyzer(enabled=config.pressure_analysis_enabled)
         self.field_dynamics = SignalFieldDynamics(enabled=config.signal_dynamics_enabled)
+        self.trace_compressor = TraceCompressor(enabled=config.trace_compression_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -310,6 +312,25 @@ class SimEngine:
                 if obs_tick == self.tick_count:
                     self.field_dynamics.record_observation(obs_tick, obs_unit, obs_type, obs_data)
 
+        # Phase 12: Trace compression
+        if self.trace_compressor.enabled:
+            for unit in self.units:
+                if unit.is_active:
+                    field_summary = unit._field_tracker.get_summary(self.tick_count) if hasattr(unit, '_field_tracker') else None
+                    self.trace_compressor.record_trace_point(
+                        tick=self.tick_count,
+                        unit_id=unit.unit_id,
+                        data={
+                            "power_ratio": unit._power_ratio(),
+                            "component_health": unit._avg_component_health(),
+                            "signal_count": field_summary.total_signals if field_summary else 0,
+                            "observation_count": field_summary.total_signals if field_summary else 0,
+                            "hazard_count": field_summary.total_hazards if field_summary else 0,
+                            "emission_count": field_summary.total_emissions if field_summary else 0,
+                            "scan_count": field_summary.total_scans if field_summary else 0,
+                        }
+                    )
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -385,3 +406,7 @@ class SimEngine:
     def get_field_dynamics_summary(self) -> Dict[str, Any]:
         """Get signal field dynamics summary for artifact output."""
         return self.field_dynamics.get_summary()
+
+    def get_trace_compression_summary(self) -> Dict[str, Any]:
+        """Get trace compression summary for artifact output."""
+        return self.trace_compressor.get_summary()

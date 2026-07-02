@@ -149,6 +149,13 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                    f"avg_gradient={dynamics['avg_signal_gradient']:.3f}, "
                    f"max_gradient={dynamics['max_signal_gradient']:.3f}")
 
+    # Output trace compression summary
+    if cfg.trace_compression_enabled:
+        trace = engine.get_trace_compression_summary()
+        click.echo(f"Trace compression: raw={trace['raw_trace_points']}, "
+                   f"compressed={trace['compressed_trace_points']}, "
+                   f"ratio={trace['compression_ratio']:.3f}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -180,6 +187,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.signal_dynamics_enabled:
             dynamics_summary = engine.get_field_dynamics_summary()
             (outpath / "signal_field_dynamics.json").write_text(json.dumps(dynamics_summary, indent=2))
+        if cfg.trace_compression_enabled:
+            trace_summary = engine.get_trace_compression_summary()
+            (outpath / "trace_compression.json").write_text(json.dumps(trace_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

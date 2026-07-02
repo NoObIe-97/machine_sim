@@ -42,6 +42,7 @@ class SimConfig:
     lineage_drift_enabled: bool = False
     pressure_analysis_enabled: bool = False
     signal_dynamics_enabled: bool = False
+    trace_compression_enabled: bool = False
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:
