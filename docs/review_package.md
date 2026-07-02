@@ -20,6 +20,7 @@
 - `032e46c` — Milestone 7B impact evidence (5 files, 107 insertions)
 - `c5ff0bc` — Milestone 7C final test assertion (2 files, 17 insertions)
 - `e447513` — Milestone 7D assertion correction (1 file, 5 insertions)
+- `bc61d70` — Milestone 8 telemetry reconciliation and lineage drift (8 files, 766 insertions)
 
 ## Branch Name
 `feature/milestone-1`
