@@ -16,7 +16,7 @@
 - `cc68051` — Milestone 6 fabricated descent (12 files, 819 insertions)
 - `e7338c4` — Milestone 6A hardening (6 files, 146 insertions)
 - `670dedf` — Milestone 6B demo alignment (2 files, 39 insertions)
-- PENDING — Milestone 7 calibration capsules (this patch)
+- `79ad9f6` — Milestone 7 calibration capsules (12 files, 595 insertions)
 
 ## Branch Name
 `feature/milestone-1`
