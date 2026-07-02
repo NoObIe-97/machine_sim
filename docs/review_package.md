@@ -32,6 +32,7 @@
 - `f0f2b2e` — Milestone 10C documentation sync
 - `bdf6549` — Milestone 10D wording patch
 - `0f6cc64` — Milestone 11 bounded operational trace compression
+- `0be8000` — Milestone 11A trace compression hardening and stage closing
 
 ## Branch Name
 `feature/milestone-1`
