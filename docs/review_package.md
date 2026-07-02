@@ -23,6 +23,7 @@
 - `bc61d70` — Milestone 8 telemetry reconciliation and lineage drift (8 files, 766 insertions)
 - `34739d7` — Milestone 8A verification and documentation hardening (2 files, 75 insertions)
 - `7b876fe` — Milestone 9 resource pressure and field perturbation (8 files, 498 insertions)
+- `b60a50e` — Milestone 9A test hardening and signal_density fix (2 files, 100 insertions)
 
 ## Branch Name
 `feature/milestone-1`
