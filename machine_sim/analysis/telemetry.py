@@ -166,11 +166,13 @@ class TelemetryTracker:
 class ReconciliationEngine:
     """Computes neutral telemetry reconciliation between overlapping units."""
 
-    def __init__(self, enabled: bool = True, interval: int = 5, radius: int = 3, max_pairs: int = 20) -> None:
+    def __init__(self, enabled: bool = True, interval: int = 5, radius: int = 3,
+                 max_pairs: int = 20, max_records: int = 200) -> None:
         self.enabled = enabled
         self.interval = interval
         self.radius = radius
         self.max_pairs = max_pairs
+        self.max_records = max_records
         self._records: List[ReconciliationRecord] = []
 
     def reconcile(self, units: List[Any], world: Any, tick: int) -> List[ReconciliationRecord]:
@@ -237,6 +239,8 @@ class ReconciliationEngine:
                 pair_count += 1
 
         self._records.extend(records)
+        if len(self._records) > self.max_records:
+            self._records = self._records[-self.max_records:]
         return records
 
     def get_records(self) -> List[ReconciliationRecord]:

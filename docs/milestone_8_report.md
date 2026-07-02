@@ -18,6 +18,7 @@ Implemented bounded operational telemetry, neutral redundant-state reconciliatio
 ### 2. Reconciliation Engine (analysis/telemetry.py)
 - `ReconciliationEngine` computes neutral numeric overlap between nearby units
 - Proximity-based pairing within configurable radius
+- Bounded by `max_records` to prevent unbounded storage
 - Outputs: power_diff, sensor_health_diff, divergence, continuity scores
 - Deterministic under same seed
 
@@ -42,24 +43,36 @@ Implemented bounded operational telemetry, neutral redundant-state reconciliatio
 - Biological inheritance, parent/child framing
 - Language, message, instruction concepts
 
-## Metrics Added
-
-| Metric | Description |
-|--------|-------------|
-| telemetry frames | Diagnostic snapshots per unit per tick |
-| reconciliation records | Numeric overlap between nearby units |
-| avg_divergence | Average telemetry divergence between paired units |
-| avg_continuity | Average telemetry continuity (1 - divergence) |
-| lineage drift entries | Drift metrics per lineage generation |
-| continuity_score | 1 - avg_sparsity (higher = more complete) |
-| divergence_score | avg_sparsity (higher = more sparse) |
-
 ## Commands Run
 
 ```bash
 python -m pytest machine_sim/tests/ -v
 python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
 python -m machine_sim.cli.main check
+
+python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo_m1
+python -m machine_sim.cli.main inspect output/demo_m1
+
+python -m machine_sim.cli.main run -c configs/milestone_2_crowded.toml -t 100 -s 42 -o output/demo_m2
+python -m machine_sim.cli.main inspect output/demo_m2
+
+python -m machine_sim.cli.main run -c configs/milestone_3_signals.toml -t 100 -s 42 -o output/demo_m3
+python -m machine_sim.cli.main inspect output/demo_m3
+
+python -m machine_sim.cli.main run -c configs/milestone_4_correlation.toml -t 100 -s 42 -o output/demo_m4
+python -m machine_sim.cli.main inspect output/demo_m4
+
+python -m machine_sim.cli.main run -c configs/milestone_5_adaptive.toml -t 150 -s 42 -o output/demo_m5
+python -m machine_sim.cli.main inspect output/demo_m5
+python -m machine_sim.cli.main compare -c configs/milestone_5_adaptive.toml -t 150 -s 42
+
+python -m machine_sim.cli.main run -c configs/milestone_6_fabrication.toml -t 200 -s 42 -o output/demo_m6
+python -m machine_sim.cli.main inspect output/demo_m6
+
+python -m machine_sim.cli.main run -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42 -o output/demo_m7
+python -m machine_sim.cli.main inspect output/demo_m7
+python -m machine_sim.cli.main capsule-compare -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42
+
 python -m machine_sim.cli.main run -c configs/milestone_8_telemetry_reconciliation.toml -t 200 -s 42 -o output/demo_m8
 python -m machine_sim.cli.main inspect output/demo_m8
 ```
@@ -79,14 +92,55 @@ Total coverage: 83.75%
 
 ## Demo Output Summary
 
-### Milestone 8 Telemetry Reconciliation Demo (200 ticks, 20x20, 3 units)
+### M1: Survival Substrate
+- 1851 events, 0/5 active
+
+### M2: Interaction Substrate
+- 1388 events, 3/6 active, 17 MOVEMENT_BLOCKED
+
+### M3: Signal Emission
+- 1060 events, 1/4 active, 29 SIGNAL_EMITTED
+
+### M4: Correlation
+- 1260 events, 1/5 active, 35 SIGNAL_EMITTED
+
+### M5: Adaptive Control
+- 1511 events, 0/5 active, cumulative adaptive stats
+
+### M5 Comparison (Baseline vs Adaptive)
 ```
-Fabrication: 985 attempts, 9 successes, 9 lineage records
-  Capsules: 9 generated, avg_sparsity=0.50
+  Metric                 Baseline   Adaptive      Delta
+  --------------------------------------------------
+  total_events               1434       1511 +       77
+  emitted                      39         49 +       10
+  received                    300        400 +      100
+```
+
+### M6: Fabrication
+- 985 attempts, 9 successes, 9 lineage records, 4 generations
+
+### M7: Calibration Capsules
+- 9 capsules generated, avg_sparsity=0.50
+
+### M7 Capsule Comparison
+```
+  warm_start_power_delta               0.0000       1.8906      +1.8906
+  neutral_metric_delta_detected           yes          yes
+  capsule_applied                            N/A            9
+```
+
+### M8: Telemetry Reconciliation
+```
 Telemetry: 50 frames, 12 units tracked
 Reconciliation: 182 records, avg_divergence=0.1797, avg_continuity=0.8203
 Lineage drift: 5 entries, max_generation=3
 ```
+
+## Artifact Paths
+
+- `output/demo_m8/telemetry.json`
+- `output/demo_m8/reconciliation.json`
+- `output/demo_m8/lineage_drift.json`
 
 ## Known Limitations
 
@@ -97,4 +151,4 @@ Lineage drift: 5 entries, max_generation=3
 
 ## Next Recommended Milestone
 
-Milestone 9: Conflict/Cooperation Experiments — multi-unit resource competition, cooperative extraction, deception-like signaling, alliance-like coordination patterns.
+Milestone 9: Multi-Unit Resource Pressure and Field Perturbation Analysis — bounded resource depletion fields, extraction-load coupling, signal-field perturbation metrics, proximity pressure envelopes, and non-semantic allocation stress tests.
