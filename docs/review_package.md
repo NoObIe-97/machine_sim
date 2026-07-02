@@ -28,6 +28,7 @@
 - `3173b3f` — Milestone 10 signal pattern field dynamics
 - `24261e9` — Milestone 10A gradient exposure
 - `78a4ee7` — Milestone 10B test hardening
+- `0f6cc64` — Milestone 11 bounded operational trace compression
 
 ## Branch Name
 `feature/milestone-1`
