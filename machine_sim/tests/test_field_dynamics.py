@@ -99,7 +99,7 @@ class TestSignalFieldDynamics:
         assert r1 == r2
 
     def test_field_dynamics_generates_metrics(self):
-        """Field dynamics demo generates nonzero metrics."""
+        """Field dynamics demo generates nonzero metrics with gradient fields."""
         cfg = SimConfig(grid_width=12, grid_height=12, max_ticks=200, seed=42,
                         unit_count=4, resource_density=0.5, hazard_density=0.08,
                         power_drain_rate=0.5,
@@ -113,5 +113,20 @@ class TestSignalFieldDynamics:
         summary = engine.get_field_dynamics_summary()
         assert summary["total_signals"] > 0
         assert summary["pattern_count"] > 0
-        assert summary["cluster_count"] >= 0
-        assert summary["correlation_count"] >= 0
+        assert summary["cluster_count"] > 0
+        assert summary["peak_cluster_density"] > 0.0
+        assert summary["correlation_count"] > 0
+        assert summary["avg_correlation_score"] > 0.0
+        assert summary["max_correlation_score"] > 0.0
+        assert summary["signal_gradient_cells"] > 0
+        assert summary["avg_signal_gradient"] > 0.0
+        assert summary["max_signal_gradient"] > 0.0
+
+    def test_field_dynamics_bounded_storage(self):
+        """Field dynamics respects max_records bound."""
+        dynamics = SignalFieldDynamics(enabled=True, max_records=5)
+        for i in range(10):
+            dynamics.record_signal(i, f"u-{i}", 0, {})
+            dynamics.record_observation(i, f"u-{i}", "hazard", {})
+        assert len(dynamics._signal_history) <= 5
+        assert len(dynamics._observation_history) <= 5
