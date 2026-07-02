@@ -40,6 +40,7 @@ class SimConfig:
     reconciliation_interval: int = 5
     reconciliation_radius: int = 3
     lineage_drift_enabled: bool = False
+    pressure_analysis_enabled: bool = False
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

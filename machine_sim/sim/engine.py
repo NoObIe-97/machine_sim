@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
+from machine_sim.analysis.pressure import PressureAnalyzer
 from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
@@ -54,6 +55,7 @@ class SimEngine:
             radius=config.reconciliation_radius,
         )
         self.lineage_drift = LineageDriftAnalyzer(enabled=config.lineage_drift_enabled)
+        self.pressure_analyzer = PressureAnalyzer(enabled=config.pressure_analysis_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -285,6 +287,13 @@ class SimEngine:
             active_units = [u for u in self.units if u.is_active]
             self.reconciliation_engine.reconcile(active_units, self.world, self.tick_count)
 
+        # Phase 10: Pressure analysis
+        if self.pressure_analyzer.enabled:
+            self.pressure_analyzer.record_tick(
+                self.world, self.units, self.tick_count,
+                signal_enabled=self.config.signal_enabled
+            )
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -352,3 +361,7 @@ class SimEngine:
         lineage_records = self.fabrication_engine.get_lineage_records()
         self.lineage_drift.analyze(capsules, lineage_records)
         return self.lineage_drift.get_summary()
+
+    def get_pressure_summary(self) -> Dict[str, Any]:
+        """Get pressure analysis summary for artifact output."""
+        return self.pressure_analyzer.get_summary()

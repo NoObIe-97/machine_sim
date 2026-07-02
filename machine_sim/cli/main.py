@@ -120,6 +120,22 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         click.echo(f"Lineage drift: {drift_summary['total_entries']} entries, "
                    f"max_generation={drift_summary['max_generation']}")
 
+    # Output pressure analysis summary
+    if cfg.pressure_analysis_enabled:
+        pressure = engine.get_pressure_summary()
+        click.echo(f"Resource pressure: cells={pressure['resource_pressure_cells']}, "
+                   f"avg_depletion={pressure['resource_depletion_rate']:.3f}, "
+                   f"max_pressure={pressure['max_resource_pressure']:.3f}")
+        click.echo(f"Extraction load: total={pressure['total_extraction_events']}, "
+                   f"peak_load={pressure['peak_cell_load']:.3f}, "
+                   f"avg_load={pressure['avg_load_per_active_unit']:.3f}")
+        click.echo(f"Proximity pressure: avg={pressure['avg_proximity_pressure']:.3f}, "
+                   f"max={pressure['max_proximity_pressure']:.3f}, "
+                   f"blocked_rate={pressure['blocked_motion_rate']:.3f}")
+        if cfg.signal_enabled:
+            click.echo(f"Field perturbation: density={pressure['signal_density']:.1f}, "
+                       f"perturbation={pressure['field_perturbation_score']:.3f}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -145,6 +161,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.lineage_drift_enabled:
             drift_summary = engine.get_lineage_drift_summary()
             (outpath / "lineage_drift.json").write_text(json.dumps(drift_summary, indent=2))
+        if cfg.pressure_analysis_enabled:
+            pressure_summary = engine.get_pressure_summary()
+            (outpath / "pressure_analysis.json").write_text(json.dumps(pressure_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 
