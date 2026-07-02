@@ -104,6 +104,22 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             click.echo(f"  Capsules: {cap_summary['total_capsules']} generated, "
                        f"avg_sparsity={cap_summary['avg_sparsity']:.2f}")
 
+    # Output telemetry summary
+    if cfg.telemetry_enabled:
+        telemetry_summary = engine.get_telemetry_summary()
+        click.echo(f"Telemetry: {telemetry_summary['total_frames']} frames, "
+                   f"{telemetry_summary['units_tracked']} units tracked")
+        reconciliation_summary = engine.get_reconciliation_summary()
+        click.echo(f"Reconciliation: {reconciliation_summary['total_records']} records, "
+                   f"avg_divergence={reconciliation_summary['avg_divergence']:.4f}, "
+                   f"avg_continuity={reconciliation_summary['avg_continuity']:.4f}")
+
+    # Output lineage drift summary
+    if cfg.lineage_drift_enabled:
+        drift_summary = engine.get_lineage_drift_summary()
+        click.echo(f"Lineage drift: {drift_summary['total_entries']} entries, "
+                   f"max_generation={drift_summary['max_generation']}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -121,6 +137,14 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.capsule_enabled:
             capsule_summary = engine.get_capsule_summary()
             (outpath / "capsules.json").write_text(json.dumps(capsule_summary, indent=2))
+        if cfg.telemetry_enabled:
+            telemetry_summary = engine.get_telemetry_summary()
+            (outpath / "telemetry.json").write_text(json.dumps(telemetry_summary, indent=2))
+            reconciliation_summary = engine.get_reconciliation_summary()
+            (outpath / "reconciliation.json").write_text(json.dumps(reconciliation_summary, indent=2))
+        if cfg.lineage_drift_enabled:
+            drift_summary = engine.get_lineage_drift_summary()
+            (outpath / "lineage_drift.json").write_text(json.dumps(drift_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

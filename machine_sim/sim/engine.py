@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
+from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
@@ -46,6 +47,13 @@ class SimEngine:
             variation_factor=config.fabrication_variation,
         )
         self.capsule_manager = CapsuleManager(enabled=config.capsule_enabled)
+        self.telemetry_tracker = TelemetryTracker(enabled=config.telemetry_enabled)
+        self.reconciliation_engine = ReconciliationEngine(
+            enabled=config.reconciliation_enabled,
+            interval=config.reconciliation_interval,
+            radius=config.reconciliation_radius,
+        )
+        self.lineage_drift = LineageDriftAnalyzer(enabled=config.lineage_drift_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -266,6 +274,17 @@ class SimEngine:
 
         self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_END))
 
+        # Phase 8: Telemetry recording
+        if self.telemetry_tracker.enabled:
+            for unit in self.units:
+                if unit.is_active:
+                    self.telemetry_tracker.record_frame(unit, self.tick_count, self.world)
+
+        # Phase 9: Reconciliation (at configured interval)
+        if self.reconciliation_engine.enabled and self.tick_count % self.reconciliation_engine.interval == 0:
+            active_units = [u for u in self.units if u.is_active]
+            self.reconciliation_engine.reconcile(active_units, self.world, self.tick_count)
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -318,3 +337,18 @@ class SimEngine:
                     "adaptive_enabled": getattr(unit, 'adaptive_enabled', False),
                 }
         return summaries
+
+    def get_telemetry_summary(self) -> Dict[str, Any]:
+        """Get telemetry summary for artifact output."""
+        return self.telemetry_tracker.get_summary()
+
+    def get_reconciliation_summary(self) -> Dict[str, Any]:
+        """Get reconciliation summary for artifact output."""
+        return self.reconciliation_engine.get_summary()
+
+    def get_lineage_drift_summary(self) -> Dict[str, Any]:
+        """Get lineage drift analysis summary."""
+        capsules = self.capsule_manager.get_capsules()
+        lineage_records = self.fabrication_engine.get_lineage_records()
+        self.lineage_drift.analyze(capsules, lineage_records)
+        return self.lineage_drift.get_summary()
