@@ -136,6 +136,16 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             click.echo(f"Field perturbation: density={pressure['signal_density']:.1f}, "
                        f"perturbation={pressure['field_perturbation_score']:.3f}")
 
+    # Output field dynamics summary
+    if cfg.signal_dynamics_enabled:
+        dynamics = engine.get_field_dynamics_summary()
+        click.echo(f"Signal dynamics: patterns={dynamics['pattern_count']}, "
+                   f"total_signals={dynamics['total_signals']}, "
+                   f"clusters={dynamics['cluster_count']}")
+        click.echo(f"Pattern correlation: records={dynamics['correlation_count']}, "
+                   f"avg_score={dynamics['avg_correlation_score']:.3f}, "
+                   f"max_score={dynamics['max_correlation_score']:.3f}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -164,6 +174,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.pressure_analysis_enabled:
             pressure_summary = engine.get_pressure_summary()
             (outpath / "pressure_analysis.json").write_text(json.dumps(pressure_summary, indent=2))
+        if cfg.signal_dynamics_enabled:
+            dynamics_summary = engine.get_field_dynamics_summary()
+            (outpath / "signal_field_dynamics.json").write_text(json.dumps(dynamics_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

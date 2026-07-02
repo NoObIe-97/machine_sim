@@ -64,7 +64,7 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "fabrication_power_cost", "fabrication_material_cost", "fabrication_variation",
     "capsule_enabled", "telemetry_enabled", "reconciliation_enabled",
     "reconciliation_interval", "reconciliation_radius", "lineage_drift_enabled",
-    "pressure_analysis_enabled",
+    "pressure_analysis_enabled", "signal_dynamics_enabled",
 }
 
 # Allowed memory event_type labels

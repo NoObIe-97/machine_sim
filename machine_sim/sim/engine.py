@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
 from machine_sim.analysis.correlation import SignalCorrelator
+from machine_sim.analysis.field_dynamics import SignalFieldDynamics
 from machine_sim.analysis.pressure import PressureAnalyzer
 from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
 from machine_sim.environment.calibration import CapsuleManager
@@ -56,6 +57,7 @@ class SimEngine:
         )
         self.lineage_drift = LineageDriftAnalyzer(enabled=config.lineage_drift_enabled)
         self.pressure_analyzer = PressureAnalyzer(enabled=config.pressure_analysis_enabled)
+        self.field_dynamics = SignalFieldDynamics(enabled=config.signal_dynamics_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -294,6 +296,17 @@ class SimEngine:
                 signal_enabled=self.config.signal_enabled
             )
 
+        # Phase 11: Signal field dynamics (record signals for analysis)
+        if self.field_dynamics.enabled:
+            # Record signals from correlator
+            for sig_tick, sig_unit, pattern_id, sig_data in self.correlator._signal_history:
+                if sig_tick == self.tick_count:
+                    self.field_dynamics.record_signal(sig_tick, sig_unit, pattern_id, sig_data)
+            # Record observations from correlator
+            for obs_tick, obs_unit, obs_type, obs_data in self.correlator._observation_history:
+                if obs_tick == self.tick_count:
+                    self.field_dynamics.record_observation(obs_tick, obs_unit, obs_type, obs_data)
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -365,3 +378,7 @@ class SimEngine:
     def get_pressure_summary(self) -> Dict[str, Any]:
         """Get pressure analysis summary for artifact output."""
         return self.pressure_analyzer.get_summary()
+
+    def get_field_dynamics_summary(self) -> Dict[str, Any]:
+        """Get signal field dynamics summary for artifact output."""
+        return self.field_dynamics.get_summary()
