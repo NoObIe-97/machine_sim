@@ -130,15 +130,15 @@ class PressureAnalyzer:
 
         avg_proximity = total_proximity / max(1, len(active_units))
 
-        # Signal field metrics
+        # Signal field metrics — use all units (not just active) for cumulative signal density
         signal_density = 0.0
         signal_load = 0.0
         if signal_enabled:
-            for unit in active_units:
+            for unit in units:
                 if hasattr(unit, '_field_tracker'):
-                    fs = unit._field_tracker.get_summary(tick)
-                    signal_density += fs.total_signals
-                    signal_load += fs.emission_rate
+                    # Track both emitted and received signals
+                    signal_density += unit._field_tracker._total_signals + unit._field_tracker._total_emissions
+                    signal_load += unit._field_tracker._total_emissions
 
         # Build summary
         avg_pressure = total_pressure / max(1, pressure_cells)
