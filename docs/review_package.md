@@ -1,7 +1,8 @@
-# Milestone 10 Final Review Package
+# Milestone 11 Final Review Package
 
-## Commit Hash
-- `6b1bde7` — original Milestone 1 implementation
+## Commit History
+
+- `6b1bde7` — Milestone 1 survival substrate
 - `6370caf` — Milestone 1A hardening
 - `5744ad1` — Milestone 1B corrections
 - `cf6b4fb` — Milestone 2 interaction substrate
@@ -28,6 +29,8 @@
 - `3173b3f` — Milestone 10 signal pattern field dynamics
 - `24261e9` — Milestone 10A gradient exposure
 - `78a4ee7` — Milestone 10B test hardening
+- `f0f2b2e` — Milestone 10C documentation sync
+- `bdf6549` — Milestone 10D wording patch
 - `0f6cc64` — Milestone 11 bounded operational trace compression
 
 ## Branch Name
@@ -37,32 +40,39 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-194 passed in 16.14s
+213 passed in 18.07s
 
 ## Coverage (Final)
-83.06%
+81.91%
 
 ## Guardrail Result
 All guardrail checks passed.
 
-## M1–M10 Regression Summary
+## Full M1–M11 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
-| M1 | 1881 events, 0/5 active |
-| M2 | 1388 events, 3/6 active, 17 MOVEMENT_BLOCKED |
-| M3 | 1060 events, 1/4 active, 29 SIGNAL_EMITTED |
-| M4 | 1260 events, 1/5 active, 35 SIGNAL_EMITTED |
-| M5 | 1511 events, 0/5 active |
+| M1 | 0/5 active at 500 ticks |
+| M2 | 3/6 active at 100 ticks |
+| M3 | 1/4 active, 30 emissions, 235 observations |
+| M4 | 1/5 active, 39 emissions, 295 observations, 300 associations |
 | M5 compare | adaptive +77 events, +10 emissions, +100 received |
 | M6 | 985 attempts, 9 successes, 9 lineage records |
-| M7 | 9 capsules, avg_sparsity=0.50 |
 | M7 compare | warm_start_power_delta +1.8906 |
 | M8 | 50 frames, 182 reconciliation, 5 drift entries |
 | M9 | 5 pressure cells, avg_depletion=0.366, max_pressure=0.760 |
 | M10 | 3 patterns, 30 signals, 4 clusters, avg_score=12.295, gradient cells=4 |
+| M11 | raw=100, compressed=20, ratio=0.200, replay windows=4, stability=0.656 |
+
+## M11 Output Summary
+
+```
+Trace compression: raw=100, compressed=20, ratio=0.200
+Replay metrics: windows=4, avg_error=0.326, stability=0.656
+```
 
 ## Artifact Paths
+- `output/demo_m11/trace_compression.json`
 - `output/demo_m10/signal_field_dynamics.json`
 - `output/demo_m9/pressure_analysis.json`
 - `output/demo_m8/telemetry.json`
@@ -70,6 +80,7 @@ All guardrail checks passed.
 - `output/demo_m8/lineage_drift.json`
 
 ## Report Paths
+- `docs/milestone_11_report.md`
 - `docs/milestone_10_report.md`
 - `docs/milestone_9_report.md`
 - `docs/milestone_8_report.md`

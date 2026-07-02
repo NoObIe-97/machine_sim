@@ -330,6 +330,37 @@ class SimEngine:
                             "scan_count": field_summary.total_scans if field_summary else 0,
                         }
                     )
+                    # Telemetry frame for window reduction
+                    if self.telemetry_tracker.enabled:
+                        self.trace_compressor.record_telemetry_frame(
+                            tick=self.tick_count,
+                            data={
+                                "power_ratio": unit._power_ratio(),
+                                "sensor_health": unit._avg_component_health(),
+                                "unit_id": unit.unit_id,
+                            }
+                        )
+            # Capsule-compatible diagnostic summary
+            if self.capsule_manager.enabled:
+                for unit in self.units:
+                    if unit.is_active:
+                        field_summary = unit._field_tracker.get_summary(self.tick_count) if hasattr(unit, '_field_tracker') else None
+                        self.trace_compressor.record_capsule_data({
+                            "unit_id": unit.unit_id,
+                            "power_ratio": unit._power_ratio(),
+                            "sensor_health": unit._avg_component_health(),
+                            "local_field_value": field_summary.total_signals if field_summary else 0,
+                        })
+            # Lineage-indexed trace comparison
+            if self.config.fabrication_enabled:
+                lineage_records = self.fabrication_engine.get_lineage_records()
+                for rec in lineage_records[-self.trace_compressor.max_records:]:
+                    self.trace_compressor.record_lineage_data({
+                        "unit_id": rec.get("unit_id", ""),
+                        "tick": rec.get("tick", 0),
+                        "power_ratio": rec.get("power_ratio", 0.0),
+                        "generation_index": rec.get("generation_index", 0),
+                    })
 
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""

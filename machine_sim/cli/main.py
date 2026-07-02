@@ -155,6 +155,24 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         click.echo(f"Trace compression: raw={trace['raw_trace_points']}, "
                    f"compressed={trace['compressed_trace_points']}, "
                    f"ratio={trace['compression_ratio']:.3f}")
+        tel = trace.get("telemetry", {})
+        if tel.get("telemetry_input_frames", 0) > 0:
+            click.echo(f"Telemetry reduction: input={tel['telemetry_input_frames']}, "
+                       f"compressed={tel['compressed_telemetry_frames']}, "
+                       f"continuity={tel['continuity_summary']:.3f}")
+        cap = trace.get("capsule", {})
+        if cap.get("capsule_summary_count", 0) > 0:
+            click.echo(f"Capsule diagnostics: count={cap['capsule_summary_count']}, "
+                       f"fields={cap['capsule_compatible_fields']}")
+        lin = trace.get("lineage", {})
+        if lin.get("lineage_trace_count", 0) > 0:
+            click.echo(f"Lineage trace: count={lin['lineage_trace_count']}, "
+                       f"span={lin['lineage_index_span']}, "
+                       f"delta={lin['lineage_trace_delta']:.3f}")
+        rep = trace.get("replay", {})
+        click.echo(f"Replay metrics: windows={rep.get('replay_window_count', 0)}, "
+                   f"avg_error={rep.get('avg_replay_error', 0):.3f}, "
+                   f"stability={rep.get('replay_stability_score', 0):.3f}")
 
     if output:
         outpath = Path(output)
