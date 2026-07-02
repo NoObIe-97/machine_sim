@@ -21,6 +21,7 @@
 - `c5ff0bc` — Milestone 7C final test assertion (2 files, 17 insertions)
 - `e447513` — Milestone 7D assertion correction (1 file, 5 insertions)
 - `bc61d70` — Milestone 8 telemetry reconciliation and lineage drift (8 files, 766 insertions)
+- `34739d7` — Milestone 8A verification and documentation hardening (2 files, 75 insertions)
 
 ## Branch Name
 `feature/milestone-1`
