@@ -87,13 +87,22 @@ class TestCapsuleGenerator:
         capsule = gen.generate(source, world, "succ-0", 10)
         successor = MachineUnitImpl("succ-0", position=(6, 5))
 
-        initial_power = successor.power_reserve
         gen.apply_warm_start(capsule, successor)
 
-        assert hasattr(successor, '_calibration_capsule')
+        # Verify warm-start effect is recorded with real deltas
+        effect = successor._capsule_warm_start_effect
+        assert effect is not None
+        assert "pre_sensor_health" in effect
+        assert "post_sensor_health" in effect
+        assert "sensor_health_delta" in effect
+        assert "pre_power_reserve" in effect
+        assert "post_power_reserve" in effect
+        assert "power_reserve_delta" in effect
+        # At least one delta must be nonzero
+        assert abs(effect["power_reserve_delta"]) > 0.0 or \
+               abs(effect["sensor_health_delta"]) > 0.0, \
+            "Expected at least one nonzero warm-start delta"
         assert successor._capsule_applied is True
-        # Power may shift slightly due to bias
-        assert successor.power_reserve != initial_power or capsule.initial_power_bias == 0
 
 
 class TestCapsuleManager:
@@ -217,7 +226,9 @@ class TestCapsuleImpact:
         impact = compute_capsule_impact(enabled, disabled)
         # Capsule-enabled should have at least one successor with capsule applied
         assert impact["capsule_enabled"]["capsule_applied_count"] > 0
-        # Impact should detect at least one delta (capsule application counts)
+        # Assert at least one real numeric delta (not just metadata)
+        assert abs(impact["delta"]["warm_start_power_delta"]) > 0.0, \
+            "Expected nonzero warm_start_power_delta from capsule application"
         assert impact["delta"]["neutral_metric_delta_detected"] is True
         assert len(impact["delta"]["impact_metric_names"]) > 0
 

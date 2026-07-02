@@ -280,8 +280,7 @@ def compute_capsule_impact(
     ws_sensor_diff = abs(enabled_stats["warm_start_sensor_delta"] - disabled_stats["warm_start_sensor_delta"])
 
     neutral_delta_detected = (power_diff > EPS or sensor_diff > EPS or
-                              ws_power_diff > EPS or ws_sensor_diff > EPS or
-                              enabled_stats["capsule_applied_count"] > 0)
+                              ws_power_diff > EPS or ws_sensor_diff > EPS)
 
     return {
         "capsule_enabled": enabled_stats,
