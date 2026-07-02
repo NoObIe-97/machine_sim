@@ -279,14 +279,21 @@ def capsule_compare(config: str, ticks: int | None, seed: int) -> None:
     )
 
     click.echo("Capsule Impact Comparison:")
-    click.echo(f"  {'Metric':<25} {'Disabled':>12} {'Enabled':>12} {'Delta':>12}")
-    click.echo(f"  {'-'*61}")
-    for key in ["count", "avg_power", "avg_sensor_health", "active_count"]:
-        d = impact["capsule_disabled"]
-        e = impact["capsule_enabled"]
-        click.echo(f"  {key:<25} {d[key]:>12.2f} {e[key]:>12.2f} {e[key]-d[key]:>+12.2f}")
-    click.echo(f"  {'capsule_applied':<25} {'N/A':>12} "
+    click.echo(f"  {'Metric':<30} {'Disabled':>12} {'Enabled':>12} {'Delta':>12}")
+    click.echo(f"  {'-'*66}")
+    d = impact["capsule_disabled"]
+    e = impact["capsule_enabled"]
+    click.echo(f"  {'count':<30} {d['count']:>12.2f} {e['count']:>12.2f} {e['count']-d['count']:>+12.2f}")
+    click.echo(f"  {'avg_power':<30} {d['avg_power']:>12.4f} {e['avg_power']:>12.4f} {e['avg_power']-d['avg_power']:>+12.4f}")
+    click.echo(f"  {'avg_sensor_health':<30} {d['avg_sensor_health']:>12.4f} {e['avg_sensor_health']:>12.4f} {e['avg_sensor_health']-d['avg_sensor_health']:>+12.4f}")
+    click.echo(f"  {'active_count':<30} {d['active_count']:>12.2f} {e['active_count']:>12.2f} {e['active_count']-d['active_count']:>+12.2f}")
+    click.echo(f"  {'warm_start_power_delta':<30} {d['warm_start_power_delta']:>12.4f} {e['warm_start_power_delta']:>12.4f} {e['warm_start_power_delta']-d['warm_start_power_delta']:>+12.4f}")
+    click.echo(f"  {'warm_start_sensor_delta':<30} {d['warm_start_sensor_delta']:>12.4f} {e['warm_start_sensor_delta']:>12.4f} {e['warm_start_sensor_delta']-d['warm_start_sensor_delta']:>+12.4f}")
+    click.echo(f"  {'capsule_applied':<30} {'N/A':>12} "
                f"{impact['capsule_enabled']['capsule_applied_count']:>12}")
+    delta_detected = impact["delta"]["neutral_metric_delta_detected"]
+    click.echo(f"  {'neutral_metric_delta_detected':<30} {'no' if not delta_detected else 'yes':>12} "
+               f"{'yes' if delta_detected else 'no':>12}")
 
 
 if __name__ == "__main__":

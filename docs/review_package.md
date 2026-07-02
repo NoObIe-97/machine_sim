@@ -86,17 +86,33 @@ python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o o
 python -m machine_sim.cli.main inspect output/demo
 ```
 
-## Test Results (Milestone 6)
+## Test Results (Milestone 7B)
 
 ```
-150 passed in 5.96s
+165 passed in 12.66s
 ```
 
-## Coverage Report (Milestone 6)
+## Coverage Report (Milestone 7B)
 
 ```
-TOTAL    1144    155    86%
-Total coverage: 86.45%
+TOTAL    1325    208    84%
+Total coverage: 84.30%
+```
+
+## Capsule Impact Comparison
+
+```
+Capsule Impact Comparison:
+  Metric                             Disabled      Enabled        Delta
+  ------------------------------------------------------------------
+  count                                  9.00         9.00        +0.00
+  avg_power                            0.0000       0.0000      +0.0000
+  avg_sensor_health                    0.9660       0.9660      +0.0000
+  active_count                           0.00         0.00        +0.00
+  warm_start_power_delta               0.0000       1.8906      +1.8906
+  warm_start_sensor_delta              0.0000       0.0000      +0.0000
+  capsule_applied                         N/A            9
+  neutral_metric_delta_detected           yes          yes
 ```
 
 ## Guardrail Output

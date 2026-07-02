@@ -113,10 +113,9 @@ Fabrication: 985 attempts, 9 successes, 9 lineage records
 
 ## Known Limitations
 
-1. Warm-start effect is modest — sensor health adjustment and small power bias
+1. Warm-start effect is modest — primarily power reserve adjustment (bounded)
 2. Capsule does not transfer behavioral policies or decision rules
-3. No capsule comparison or impact metrics yet
-4. Capsule persistence is in-memory only (not disk-persistent across runs)
+3. Capsule persistence is in-memory only (not disk-persistent across runs)
 
 ## Next Recommended Milestone
 

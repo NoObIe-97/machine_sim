@@ -217,6 +217,9 @@ class TestCapsuleImpact:
         impact = compute_capsule_impact(enabled, disabled)
         # Capsule-enabled should have at least one successor with capsule applied
         assert impact["capsule_enabled"]["capsule_applied_count"] > 0
+        # Impact should detect at least one delta (capsule application counts)
+        assert impact["delta"]["neutral_metric_delta_detected"] is True
+        assert len(impact["delta"]["impact_metric_names"]) > 0
 
     def test_warm_start_changes_measurable_field(self):
         """Warm-start modifies at least one measurable successor field."""
@@ -234,7 +237,17 @@ class TestCapsuleImpact:
         initial_sensor = successor.components.get("sensor").health
 
         gen.apply_warm_start(capsule, successor)
-        # At minimum, _capsule_applied flag is set
+        # Verify warm-start effect is recorded with real deltas
+        effect = successor._capsule_warm_start_effect
+        assert effect is not None
+        assert "pre_sensor_health" in effect
+        assert "post_sensor_health" in effect
+        assert "sensor_health_delta" in effect
+        assert "pre_power_reserve" in effect
+        assert "post_power_reserve" in effect
+        assert "power_reserve_delta" in effect
+        # At least one delta should be nonzero if calibration values differ
+        # (sensor health may not change if already below calibration value)
         assert successor._capsule_applied is True
 
     def test_capsule_summary_references_successors(self):

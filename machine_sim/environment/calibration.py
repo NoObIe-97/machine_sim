@@ -137,12 +137,19 @@ class CapsuleGenerator:
             capsule_entries=entries,
         )
 
-    def apply_warm_start(self, capsule: CalibrationCapsule, successor: Any) -> None:
-        """Apply calibration capsule to successor unit as warm-start."""
+    def apply_warm_start(self, capsule: CalibrationCapsule, successor: Any) -> Dict[str, Any]:
+        """Apply calibration capsule to successor unit as warm-start.
+
+        Returns a dict recording before/after deltas for impact traceability.
+        """
+        # Record pre-state
+        pre_sensor = successor.components.get("sensor")
+        pre_sensor_health = pre_sensor.health if pre_sensor else 0.0
+        pre_power = successor.power_reserve
+
         # Sensor calibration: adjust effective sensor range
-        sensor = successor.components.get("sensor")
-        if sensor:
-            sensor.health = min(sensor.health, capsule.initial_sensor_calibration)
+        if pre_sensor:
+            pre_sensor.health = min(pre_sensor.health, capsule.initial_sensor_calibration)
 
         # Power bias: shift initial power reserve slightly
         successor.power_reserve = max(
@@ -150,9 +157,25 @@ class CapsuleGenerator:
             successor.power_reserve + capsule.initial_power_bias * successor.max_power
         )
 
-        # Store capsule as metadata on successor
+        # Compute deltas
+        post_sensor_health = pre_sensor.health if pre_sensor else 0.0
+        post_power = successor.power_reserve
+        sensor_delta = post_sensor_health - pre_sensor_health
+        power_delta = post_power - pre_power
+
+        # Store capsule and effect metadata on successor
         successor._calibration_capsule = capsule
         successor._capsule_applied = True
+        successor._capsule_warm_start_effect = {
+            "pre_sensor_health": pre_sensor_health,
+            "post_sensor_health": post_sensor_health,
+            "sensor_health_delta": sensor_delta,
+            "pre_power_reserve": pre_power,
+            "post_power_reserve": post_power,
+            "power_reserve_delta": power_delta,
+        }
+
+        return successor._capsule_warm_start_effect
 
 
 class CapsuleManager:
@@ -218,25 +241,47 @@ def compute_capsule_impact(
 
     Returns neutral machine-native metrics showing measurable differences.
     """
+    EPS = 1e-6
+
     def unit_stats(units: List[Any]) -> Dict[str, Any]:
         if not units:
             return {"count": 0, "avg_power": 0.0, "avg_sensor_health": 0.0,
-                    "active_count": 0, "capsule_applied_count": 0}
+                    "active_count": 0, "capsule_applied_count": 0,
+                    "warm_start_power_delta": 0.0, "warm_start_sensor_delta": 0.0}
         active = [u for u in units if u.is_active]
         power_vals = [u.power_reserve for u in units]
         sensor_vals = [u.components.get("sensor", type("", (), {"health": 0.0})()).health
                        for u in units]
         capsule_count = sum(1 for u in units if getattr(u, '_capsule_applied', False))
+
+        # Collect warm-start deltas from units that have them
+        ws_power_deltas = [u._capsule_warm_start_effect.get("power_reserve_delta", 0.0)
+                           for u in units if hasattr(u, '_capsule_warm_start_effect')]
+        ws_sensor_deltas = [u._capsule_warm_start_effect.get("sensor_health_delta", 0.0)
+                            for u in units if hasattr(u, '_capsule_warm_start_effect')]
+
         return {
             "count": len(units),
             "avg_power": sum(power_vals) / len(power_vals) if power_vals else 0.0,
             "avg_sensor_health": sum(sensor_vals) / len(sensor_vals) if sensor_vals else 0.0,
             "active_count": len(active),
             "capsule_applied_count": capsule_count,
+            "warm_start_power_delta": sum(ws_power_deltas) / len(ws_power_deltas) if ws_power_deltas else 0.0,
+            "warm_start_sensor_delta": sum(ws_sensor_deltas) / len(ws_sensor_deltas) if ws_sensor_deltas else 0.0,
         }
 
     enabled_stats = unit_stats(capsule_enabled_units)
     disabled_stats = unit_stats(capsule_disabled_units)
+
+    # Check if any neutral metric delta is meaningful
+    power_diff = abs(enabled_stats["avg_power"] - disabled_stats["avg_power"])
+    sensor_diff = abs(enabled_stats["avg_sensor_health"] - disabled_stats["avg_sensor_health"])
+    ws_power_diff = abs(enabled_stats["warm_start_power_delta"] - disabled_stats["warm_start_power_delta"])
+    ws_sensor_diff = abs(enabled_stats["warm_start_sensor_delta"] - disabled_stats["warm_start_sensor_delta"])
+
+    neutral_delta_detected = (power_diff > EPS or sensor_diff > EPS or
+                              ws_power_diff > EPS or ws_sensor_diff > EPS or
+                              enabled_stats["capsule_applied_count"] > 0)
 
     return {
         "capsule_enabled": enabled_stats,
@@ -245,5 +290,9 @@ def compute_capsule_impact(
             "power_diff": enabled_stats["avg_power"] - disabled_stats["avg_power"],
             "sensor_health_diff": enabled_stats["avg_sensor_health"] - disabled_stats["avg_sensor_health"],
             "active_count_diff": enabled_stats["active_count"] - disabled_stats["active_count"],
+            "warm_start_power_delta": enabled_stats["warm_start_power_delta"],
+            "warm_start_sensor_delta": enabled_stats["warm_start_sensor_delta"],
+            "neutral_metric_delta_detected": neutral_delta_detected,
+            "impact_metric_names": ["power_diff", "sensor_health_diff", "warm_start_power_delta", "warm_start_sensor_delta"],
         },
     }
