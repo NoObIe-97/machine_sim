@@ -1,8 +1,7 @@
-# Milestone 6 Review Package
+# Milestone 7 Final Review Package
 
 ## Commit Hash
 - `6b1bde7` — original Milestone 1 implementation (47 files, 2735 insertions)
-- `5fd908a` — documentation finalization
 - `6370caf` — Milestone 1A hardening (8 files, 403 insertions)
 - `5744ad1` — Milestone 1B corrections (5 files, 205 insertions)
 - `cf6b4fb` — Milestone 2 interaction substrate (10 files, 528 insertions)
@@ -18,9 +17,9 @@
 - `670dedf` — Milestone 6B demo alignment (2 files, 39 insertions)
 - `79ad9f6` — Milestone 7 calibration capsules (12 files, 595 insertions)
 - `4e16d9e` — Milestone 7A capsule impact comparison (3 files, 211 insertions)
-- `032e46c` — Milestone 7B impact evidence and documentation sync (5 files, 107 insertions)
-- `c5ff0bc` — Milestone 7C final test assertion and documentation cleanup (2 files, 17 insertions)
-- `e447513` — Milestone 7D final assertion correction (1 file, 5 insertions)
+- `032e46c` — Milestone 7B impact evidence (5 files, 107 insertions)
+- `c5ff0bc` — Milestone 7C final test assertion (2 files, 17 insertions)
+- `e447513` — Milestone 7D assertion correction (1 file, 5 insertions)
 
 ## Branch Name
 `feature/milestone-1`
@@ -28,79 +27,81 @@
 ## GitHub Repository
 https://github.com/NoObIe-97/machine_sim.git
 
-## File Tree (post-1A)
-```
-configs/milestone_1.toml
-docs/architecture.md
-docs/guardrails.md
-docs/milestone_1_plan.md
-docs/milestone_1_report.md
-docs/milestone_1a_report.md
-docs/review_package.md
-docs/review_package_spec.md
-docs/roadmap.md
-machine_sim/__init__.py
-machine_sim/analysis/__init__.py
-machine_sim/agents/__init__.py
-machine_sim/agents/base.py
-machine_sim/agents/components.py
-machine_sim/agents/decision.py
-machine_sim/agents/unit.py
-machine_sim/agents/variants.py
-machine_sim/cli/__init__.py
-machine_sim/cli/main.py
-machine_sim/environment/__init__.py
-machine_sim/environment/hazards.py
-machine_sim/environment/resources.py
-machine_sim/environment/terrain.py
-machine_sim/environment/world.py
-machine_sim/guardrails/__init__.py
-machine_sim/guardrails/codecheck.py
-machine_sim/guardrails/config.py
-machine_sim/guardrails/lexical.py
-machine_sim/guardrails/runtime.py
-machine_sim/sim/__init__.py
-machine_sim/sim/config.py
-machine_sim/sim/engine.py
-machine_sim/sim/events.py
-machine_sim/sim/seed.py
-machine_sim/sim/state.py
-machine_sim/tests/__init__.py
-machine_sim/tests/conftest.py
-machine_sim/tests/test_agents.py
-machine_sim/tests/test_cli.py
-machine_sim/tests/test_config.py
-machine_sim/tests/test_determinism.py
-machine_sim/tests/test_engine.py
-machine_sim/tests/test_environment.py
-machine_sim/tests/test_guardrails.py
-prompts/PLAN.md
-prompts/after_silicon_mimo_v25_pro_planning_prompt.md
-pyproject.toml
-```
-
-## Commands Run (1A Hardening)
+## Commands Run (Final Verification)
 
 ```bash
 python -m pytest machine_sim/tests/ -v
 python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
 python -m machine_sim.cli.main check
-python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo
-python -m machine_sim.cli.main inspect output/demo
+
+python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo_m1
+python -m machine_sim.cli.main inspect output/demo_m1
+
+python -m machine_sim.cli.main run -c configs/milestone_2_crowded.toml -t 100 -s 42 -o output/demo_m2
+python -m machine_sim.cli.main inspect output/demo_m2
+
+python -m machine_sim.cli.main run -c configs/milestone_3_signals.toml -t 100 -s 42 -o output/demo_m3
+python -m machine_sim.cli.main inspect output/demo_m3
+
+python -m machine_sim.cli.main run -c configs/milestone_4_correlation.toml -t 100 -s 42 -o output/demo_m4
+python -m machine_sim.cli.main inspect output/demo_m4
+
+python -m machine_sim.cli.main run -c configs/milestone_5_adaptive.toml -t 150 -s 42 -o output/demo_m5
+python -m machine_sim.cli.main inspect output/demo_m5
+python -m machine_sim.cli.main compare -c configs/milestone_5_adaptive.toml -t 150 -s 42
+
+python -m machine_sim.cli.main run -c configs/milestone_6_fabrication.toml -t 200 -s 42 -o output/demo_m6
+python -m machine_sim.cli.main inspect output/demo_m6
+
+python -m machine_sim.cli.main run -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42 -o output/demo_m7
+python -m machine_sim.cli.main inspect output/demo_m7
+python -m machine_sim.cli.main capsule-compare -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42
 ```
 
-## Test Results (Milestone 7B)
+## Test Results (Final)
 
 ```
-165 passed in 12.66s
+165 passed in 11.01s
 ```
 
-## Coverage Report (Milestone 7B)
+## Coverage Report (Final)
 
 ```
 TOTAL    1325    208    84%
 Total coverage: 84.30%
 ```
+
+## Guardrail Result
+
+```
+All guardrail checks passed.
+```
+
+## Demo Summaries
+
+### M1: Survival Substrate
+- 1851 events, 0/5 active
+
+### M2: Interaction Substrate
+- 1388 events, 3/6 active
+
+### M3: Signal Emission
+- 1060 events, 1/4 active, 29 SIGNAL_EMITTED
+
+### M4: Correlation
+- 1260 events, 1/5 active, 35 SIGNAL_EMITTED
+
+### M5: Adaptive Control
+- 1511 events, 0/5 active, cumulative adaptive stats
+
+### M5 Comparison
+- Adaptive: +77 total events, +10 emissions, +100 received
+
+### M6: Fabrication
+- 985 attempts, 9 successes, 9 lineage records, 4 generations
+
+### M7: Calibration Capsules
+- 9 capsules generated, avg_sparsity=0.50
 
 ## Capsule Impact Comparison
 
@@ -118,69 +119,6 @@ Capsule Impact Comparison:
   neutral_metric_delta_detected           yes          yes
 ```
 
-## Guardrail Output
-
-```
-All guardrail checks passed.
-```
-
-## Demo Output — Milestone 1 (500 ticks, 20x20, 5 units)
-
-```
-Total events: 1851
-  UNIT_ACTION: 610
-  TICK_BEGIN: 500
-  TICK_END: 500
-  RESOURCE_DEPLETED: 156
-  UNIT_PROXIMITY: 85
-```
-
-## Demo Output — Milestone 2 Crowded (100 ticks, 8x8, 6 units)
-
-```
-Total events: 1379
-  UNIT_ACTION: 566
-  UNIT_PROXIMITY: 465
-  RESOURCE_DEPLETED: 131
-  TICK_BEGIN: 100
-  TICK_END: 100
-  MOVEMENT_BLOCKED: 17
-```
-
-## Demo Output — Milestone 3 Signals (100 ticks, 10x10, 4 units)
-
-```
-Total events: 1244
-  UNIT_ACTION: 342
-  SIGNAL_RECEIVED: 327
-  UNIT_PROXIMITY: 212
-  RESOURCE_DEPLETED: 102
-  HAZARD_ENCOUNTER: 33
-  SIGNAL_EMITTED: 28
-```
-
-## Demo Output — Milestone 4 Correlation (100 ticks, 12x12, 5 units)
-
-```
-Total events: 1246
-  UNIT_ACTION: 411
-  UNIT_PROXIMITY: 321
-  SIGNAL_RECEIVED: 113
-  RESOURCE_DEPLETED: 99
-  MOVEMENT_BLOCKED: 41
-  SIGNAL_EMITTED: 34
-  HAZARD_ENCOUNTER: 27
-
-Signal correlation: 34 emissions, 348 observations, 270 associations
-  Pattern 1: 13 emissions, 100 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
-  Pattern 0: 11 emissions, 90 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
-  Pattern 2: 10 emissions, 80 observations, scores={'proximity': 1.0, 'hazard_encounter': 1.0}
-```
-
-## Demo Artifact Policy
-
-`output/` is **intentionally ignored** via `.gitignore`. Demo artifacts are generated locally using deterministic seed (42) but not committed.
-
 ## Report Paths
 - `docs/milestone_1_report.md` — original Milestone 1 report
 - `docs/milestone_1a_report.md` — hardening patch report
@@ -189,14 +127,7 @@ Signal correlation: 34 emissions, 348 observations, 270 associations
 - `docs/milestone_4_report.md` — Milestone 4 correlation analysis report
 - `docs/milestone_5_report.md` — Milestone 5 adaptive signal control report
 - `docs/milestone_6_report.md` — Milestone 6 fabricated descent report
+- `docs/milestone_7_report.md` — Milestone 7 calibration capsules report
 
 ## Clean Working Tree
-Pending commit of this patch.
-
-## Known Limitations
-
-1. Signal propagation is distance-based only (no terrain/obstacle attenuation)
-2. Emission rule is simple periodic — no adaptive emission
-3. No signal accumulation or interference model
-4. Units store observations in memory but do not act on signal content
-5. Pattern_id is a simple integer — no complex waveform representation
+Clean after final commit and push.
