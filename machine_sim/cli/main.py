@@ -174,6 +174,32 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                    f"avg_error={rep.get('avg_replay_error', 0):.3f}, "
                    f"stability={rep.get('replay_stability_score', 0):.3f}")
 
+    # Output trace drift summary
+    if cfg.trace_drift_enabled:
+        drift = engine.get_trace_drift_summary()
+        gen = drift.get("generation", {})
+        click.echo(f"Trace drift: generations={gen.get('generation_trace_count', 0)}, "
+                   f"span={gen.get('generation_index_span', 0)}, "
+                   f"avg_delta={gen.get('avg_generation_trace_delta', 0):.3f}, "
+                   f"max_delta={gen.get('max_generation_trace_delta', 0):.3f}")
+        env = drift.get("drift_envelope", {})
+        click.echo(f"Drift envelope: records={env.get('drift_envelope_count', 0)}, "
+                   f"avg_width={env.get('avg_drift_envelope_width', 0):.3f}, "
+                   f"max_width={env.get('max_drift_envelope_width', 0):.3f}")
+        rep_stab = drift.get("replay_stability", {})
+        click.echo(f"Replay stability: windows={rep_stab.get('replay_error_window_count', 0)}, "
+                   f"avg_delta={rep_stab.get('avg_replay_error_delta', 0):.3f}, "
+                   f"stability_floor={rep_stab.get('replay_stability_floor', 0):.3f}")
+        ct = drift.get("capsule_trace", {})
+        click.echo(f"Capsule trace check: count={ct.get('capsule_trace_check_count', 0)}, "
+                   f"compatibility={ct.get('capsule_trace_compatibility_score', 0):.3f}, "
+                   f"power_delta={ct.get('capsule_trace_power_delta', 0):.3f}")
+        ret = drift.get("retention", {})
+        click.echo(f"Retention: records={ret.get('retention_record_count', 0)}, "
+                   f"span={ret.get('retention_window_span', 0)}, "
+                   f"retained={ret.get('retained_summary_count', 0)}, "
+                   f"dropped={ret.get('retention_drop_count', 0)}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -208,6 +234,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.trace_compression_enabled:
             trace_summary = engine.get_trace_compression_summary()
             (outpath / "trace_compression.json").write_text(json.dumps(trace_summary, indent=2))
+        if cfg.trace_drift_enabled:
+            trace_drift_summary = engine.get_trace_drift_summary()
+            (outpath / "trace_drift.json").write_text(json.dumps(trace_drift_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

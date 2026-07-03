@@ -1,4 +1,4 @@
-# Milestone 11 Final Review Package
+# Milestone 12 Final Review Package
 
 ## Commit History
 
@@ -32,7 +32,8 @@
 - `f0f2b2e` — Milestone 10C documentation sync
 - `bdf6549` — Milestone 10D wording patch
 - `0f6cc64` — Milestone 11 bounded operational trace compression
-- `0be8000` — Milestone 11A trace compression hardening and stage closing
+- `0be8000` — Milestone 11A trace compression hardening
+- `a6e7a91` — Milestone 11B review package commit sync
 
 ## Branch Name
 `feature/milestone-1`
@@ -41,38 +42,43 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-213 passed in 18.07s
+228 passed in 20.34s
 
 ## Coverage (Final)
-81.91%
+81.85%
 
 ## Guardrail Result
 All guardrail checks passed.
 
-## Full M1–M11 Regression Summary
+## Full M1–M12 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
 | M1 | 0/5 active at 500 ticks |
 | M2 | 3/6 active at 100 ticks |
 | M3 | 1/4 active, 30 emissions, 235 observations |
-| M4 | 1/5 active, 39 emissions, 295 observations, 300 associations |
-| M5 compare | adaptive +77 events, +10 emissions, +100 received |
+| M4 | 1/5 active, 39 emissions, 295 observations |
+| M5 compare | adaptive +77 events, +10 emissions |
 | M6 | 985 attempts, 9 successes, 9 lineage records |
 | M7 compare | warm_start_power_delta +1.8906 |
 | M8 | 50 frames, 182 reconciliation, 5 drift entries |
-| M9 | 5 pressure cells, avg_depletion=0.366, max_pressure=0.760 |
-| M10 | 3 patterns, 30 signals, 4 clusters, avg_score=12.295, gradient cells=4 |
-| M11 | raw=100, compressed=20, ratio=0.200, replay windows=4, stability=0.656 |
+| M9 | 5 pressure cells, avg_depletion=0.366 |
+| M10 | 3 patterns, 30 signals, 4 clusters |
+| M11 | raw=100, compressed=20, ratio=0.200, stability=0.656 |
+| M12 | generations=100, envelope=100, replay_stability=0.011, capsule_compat=0.985, retention=100/50 |
 
-## M11 Output Summary
+## M12 Output Summary
 
 ```
-Trace compression: raw=100, compressed=20, ratio=0.200
-Replay metrics: windows=4, avg_error=0.326, stability=0.656
+Trace drift: generations=100, span=1, avg_delta=0.000, max_delta=0.000
+Drift envelope: records=100, avg_width=0.337, max_width=0.358
+Replay stability: windows=100, avg_delta=0.011, stability_floor=0.302
+Capsule trace check: count=100, compatibility=0.985, power_delta=0.015
+Retention: records=100, span=99, retained=50, dropped=50
 ```
 
 ## Artifact Paths
+- `output/demo_m12/trace_drift.json`
 - `output/demo_m11/trace_compression.json`
 - `output/demo_m10/signal_field_dynamics.json`
 - `output/demo_m9/pressure_analysis.json`
@@ -81,6 +87,7 @@ Replay metrics: windows=4, avg_error=0.326, stability=0.656
 - `output/demo_m8/lineage_drift.json`
 
 ## Report Paths
+- `docs/milestone_12_report.md`
 - `docs/milestone_11_report.md`
 - `docs/milestone_10_report.md`
 - `docs/milestone_9_report.md`

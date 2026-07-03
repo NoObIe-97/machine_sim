@@ -11,6 +11,7 @@ from machine_sim.analysis.field_dynamics import SignalFieldDynamics
 from machine_sim.analysis.pressure import PressureAnalyzer
 from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
 from machine_sim.analysis.trace_compression import TraceCompressor
+from machine_sim.analysis.trace_drift import TraceDriftAnalyzer
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
@@ -60,6 +61,7 @@ class SimEngine:
         self.pressure_analyzer = PressureAnalyzer(enabled=config.pressure_analysis_enabled)
         self.field_dynamics = SignalFieldDynamics(enabled=config.signal_dynamics_enabled)
         self.trace_compressor = TraceCompressor(enabled=config.trace_compression_enabled)
+        self.trace_drift = TraceDriftAnalyzer(enabled=config.trace_drift_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -356,11 +358,63 @@ class SimEngine:
                 lineage_records = self.fabrication_engine.get_lineage_records()
                 for rec in lineage_records[-self.trace_compressor.max_records:]:
                     self.trace_compressor.record_lineage_data({
-                        "unit_id": rec.get("unit_id", ""),
-                        "tick": rec.get("tick", 0),
-                        "power_ratio": rec.get("power_ratio", 0.0),
-                        "generation_index": rec.get("generation_index", 0),
+                        "unit_id": rec.source_unit_id,
+                        "tick": rec.fabrication_tick,
+                        "power_ratio": rec.design_distance,
+                        "generation_index": rec.successor_generation,
                     })
+
+        # Phase 13: Trace drift analysis
+        if self.trace_drift.enabled:
+            # Generation-indexed trace deltas from fabrication lineage
+            if self.config.fabrication_enabled:
+                lineage_records = self.fabrication_engine.get_lineage_records()
+                for rec in lineage_records:
+                    self.trace_drift.record_generation_trace({
+                        "generation_index": rec.successor_generation,
+                        "power_ratio": rec.design_distance,
+                        "tick": rec.fabrication_tick,
+                    })
+            # Drift envelopes from trace compression segments
+            if self.trace_compressor.enabled:
+                segments = self.trace_compressor.get_segments()
+                for seg in segments:
+                    self.trace_drift.record_envelope({
+                        "power_ratio": seg.avg_power_ratio,
+                        "sensor_health": seg.avg_component_health,
+                        "signal_count": seg.signal_count,
+                        "envelope_width": abs(seg.avg_power_ratio - 0.5),
+                    })
+                # Replay stability from trace compressor summary
+                tc_summary = self.trace_compressor.compress()
+                for i, seg in enumerate(segments):
+                    self.trace_drift.record_replay({
+                        "tick": seg.start_tick,
+                        "replay_error": abs(seg.avg_power_ratio - 0.5),
+                    })
+            # Capsule-trace compatibility
+            if self.capsule_manager.enabled and self.trace_compressor.enabled:
+                cap_records = self.trace_compressor._capsule_records
+                segments = self.trace_compressor.get_segments()
+                avg_power = sum(s.avg_power_ratio for s in segments) / max(1, len(segments))
+                avg_health = sum(s.avg_component_health for s in segments) / max(1, len(segments))
+                for cr in cap_records:
+                    self.trace_drift.record_capsule_trace({
+                        "power_delta": abs(cr.get("power_ratio", 0.0) - avg_power),
+                        "sensor_delta": abs(cr.get("sensor_health", 0.0) - avg_health),
+                        "field_delta": abs(cr.get("local_field_value", 0) - avg_health),
+                        "compatibility_score": 1.0 - abs(cr.get("power_ratio", 0.0) - avg_power),
+                    })
+            # Long-run retention
+            if self.trace_compressor.enabled:
+                all_traces = self.trace_compressor._raw_traces
+                for t in all_traces:
+                    self.trace_drift._retention_records.append({
+                        "tick": t.get("tick", 0),
+                        "unit_id": t.get("unit_id", ""),
+                    })
+                    if len(self.trace_drift._retention_records) > self.trace_drift.max_records:
+                        self.trace_drift._retention_records = self.trace_drift._retention_records[-self.trace_drift.max_records:]
 
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
@@ -441,3 +495,7 @@ class SimEngine:
     def get_trace_compression_summary(self) -> Dict[str, Any]:
         """Get trace compression summary for artifact output."""
         return self.trace_compressor.get_summary()
+
+    def get_trace_drift_summary(self) -> Dict[str, Any]:
+        """Get trace drift analysis summary for artifact output."""
+        return self.trace_drift.get_summary()
