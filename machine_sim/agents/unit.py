@@ -25,6 +25,7 @@ from machine_sim.analysis.adaptive import (
     LocalFieldTracker,
     SignalFieldSummary,
 )
+from machine_sim.agents.adaptive_control import AdaptiveController, AdaptiveStateVector
 
 
 class MachineUnitImpl(MachineUnit):
@@ -56,6 +57,12 @@ class MachineUnitImpl(MachineUnit):
         self._field_tracker = LocalFieldTracker(window_size=20)
         self._emission_policy = AdaptiveEmissionPolicy()
         self._scan_policy = AdaptiveScanPolicy()
+        self._adaptive_state = AdaptiveStateVector()
+        self._adaptive_controller = AdaptiveController(enabled=adaptive_enabled)
+        self._generation_index = 0
+        self._lifetime_ticks = 0
+        self._action_counts: Dict[str, int] = {}
+        self._last_feedback: Dict[str, float] = {}
         super().__init__(
             unit_id=unit_id,
             position=position,
@@ -74,6 +81,7 @@ class MachineUnitImpl(MachineUnit):
     def decide(self, tick: int) -> Optional[Action]:
         power_ratio = self._power_ratio()
         field_summary = self._field_tracker.get_summary(tick)
+        self._lifetime_ticks = tick
 
         # Priority 1: Critical power — harvest immediately
         if power_ratio < 0.15:
@@ -94,27 +102,21 @@ class MachineUnitImpl(MachineUnit):
         if critical and critical.health < 0.3:
             return Action(ActionType.MAINTAIN, target_component=critical.name)
 
-        # Priority 4: Signal emission (adaptive or periodic)
+        # Priority 4: Signal emission — adaptive modulation of interval/params
         if self.signal_enabled and power_ratio > 0.5:
             if self.adaptive_enabled:
-                interval = self._emission_policy.compute_interval(
-                    power_ratio, field_summary
-                )
+                # Adaptive: signal emission rate modulates interval
+                base_interval = 5
+                interval = max(2, int(base_interval * (2.0 - self._adaptive_state.signal_emission_rate)))
             else:
                 interval = 5
 
             if tick - self._last_signal_tick >= interval:
                 self._last_signal_tick = tick
                 if self.adaptive_enabled:
-                    pattern_id = self._emission_policy.compute_pattern_id(
-                        tick, field_summary, self.signal_pattern_count
-                    )
-                    intensity = self._emission_policy.compute_intensity(
-                        power_ratio, field_summary
-                    )
-                    radius = self._emission_policy.compute_radius(
-                        power_ratio, field_summary
-                    )
+                    pattern_id = (tick + int(self._adaptive_state.signal_pattern_bias * 10)) % self.signal_pattern_count
+                    intensity = 0.5 + self._adaptive_state.signal_emission_rate * 0.5
+                    radius = self.signal_default_radius + int(self._adaptive_state.signal_radius_bias * 2)
                 else:
                     pattern_id = tick % self.signal_pattern_count
                     intensity = 1.0
@@ -132,12 +134,11 @@ class MachineUnitImpl(MachineUnit):
                     },
                 )
 
-        # Priority 5: Scan (adaptive or periodic)
+        # Priority 5: Scan — adaptive modulation of interval
         if power_ratio < 0.7:
             if self.adaptive_enabled:
-                scan_interval = self._scan_policy.compute_scan_interval(
-                    power_ratio, field_summary
-                )
+                base_scan = 3
+                scan_interval = max(1, int(base_scan * (2.0 - self._adaptive_state.scan_interval_bias)))
             else:
                 scan_interval = 3
 

@@ -1,4 +1,4 @@
-# Milestone 13 Final Review Package
+# Milestone 14 Final Review Package
 
 ## Commit History
 
@@ -36,6 +36,7 @@
 - `a6e7a91` — Milestone 11B review package commit sync
 - `a2854bd` — Milestone 12 trace drift and compression stability
 - `0c50e70` — Milestone 12A documentation stage-closing sync
+- `e9c0a87` — Milestone 13 compressed summary cross-unit consistency
 
 ## Branch Name
 `feature/milestone-1`
@@ -44,15 +45,18 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-243 passed in 24.80s
+253 passed in 22.41s
 
 ## Coverage (Final)
-81.50%
+80.00%
 
 ## Guardrail Result
 All guardrail checks passed.
 
-## Full M1-M13 Regression Summary
+## M14 Judge Result
+M14_JUDGE_STATUS: PASS (11/11 checks passed, 1 SKIP)
+
+## Full M1-M14 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -66,31 +70,32 @@ All guardrail checks passed.
 | M8 | 50 frames, 182 reconciliation, 5 drift entries |
 | M9 | 5 pressure cells, avg_depletion=0.366 |
 | M10 | 3 patterns, 30 signals, 4 clusters |
-| M11 | raw=100, compressed=20, ratio=0.200, stability=0.656 |
-| M12 | generations=100, envelope=100, capsule_compat=0.985, retention=100/50 |
-| M13 | units=100, pairs=4950, consistency=0.961, compression_score=0.800, combined_stability=0.925 |
+| M11 | raw=100, compressed=20, ratio=0.200 |
+| M12 | generations=100, capsule_compat=0.985 |
+| M13 | consistency=0.961, combined_stability=0.925 |
+| M14 | 3000 ticks, 4/4 active, adaptive state changed, judge PASS |
 
-## M13 Output Summary
+## M14 Demo Output
 
 ```
-Summary consistency: units=100, pairs=4950, avg_delta=0.039, score=0.961
-Retention stability: windows=100, variance=0.250, stability=0.975, drop_rate=0.000
-Compression convergence: windows=100, ratio=0.008, delta=0.200, score=0.800
-Generation envelope: records=100, span=2, width=0.000, stability=1.000
-Combined stability: windows=100, consistency=0.961, stability=0.925, delta=0.163
+Adaptive run: active=4
+Static run: active=4
+892 emissions, 958 scans over 3000 ticks
+Adaptive state changed: move_weight, scan_weight, extract_weight, signal_weight all shifted
+Action distribution early vs late shows nonzero delta
 ```
 
 ## Artifact Paths
-- `output/demo_m13/summary_consistency.json`
-- `output/demo_m12/trace_drift.json`
-- `output/demo_m11/trace_compression.json`
-- `output/demo_m10/signal_field_dynamics.json`
-- `output/demo_m9/pressure_analysis.json`
-- `output/demo_m8/telemetry.json`
-- `output/demo_m8/reconciliation.json`
-- `output/demo_m8/lineage_drift.json`
+- `output/demo_m14/long_run_adaptation_summary.json`
+- `output/demo_m14/unit_adaptive_state_trace.jsonl`
+- `output/demo_m14/action_distribution_trace.jsonl`
+- `output/demo_m14/unit_lifetime_trace.jsonl`
+- `output/demo_m14/adaptive_vs_static_compare.json`
+- `output/demo_m14/resource_hazard_field_summary.json`
+- `output/demo_m14/milestone_14_judge_result.json`
 
 ## Report Paths
+- `docs/milestone_14_report.md`
 - `docs/milestone_13_report.md`
 - `docs/milestone_12_report.md`
 - `docs/milestone_11_report.md`

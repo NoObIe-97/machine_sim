@@ -65,7 +65,7 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "capsule_enabled", "telemetry_enabled", "reconciliation_enabled",
     "reconciliation_interval", "reconciliation_radius", "lineage_drift_enabled",
     "pressure_analysis_enabled", "signal_dynamics_enabled", "trace_compression_enabled",
-    "trace_drift_enabled", "summary_consistency_enabled",
+    "trace_drift_enabled", "summary_consistency_enabled", "long_run_adaptation_enabled",
 }
 
 # Allowed memory event_type labels

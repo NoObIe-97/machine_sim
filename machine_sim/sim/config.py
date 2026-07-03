@@ -45,6 +45,7 @@ class SimConfig:
     trace_compression_enabled: bool = False
     trace_drift_enabled: bool = False
     summary_consistency_enabled: bool = False
+    long_run_adaptation_enabled: bool = False
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

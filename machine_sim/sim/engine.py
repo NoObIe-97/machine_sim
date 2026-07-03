@@ -41,6 +41,8 @@ class SimEngine:
         self.event_log = EventLog()
         self.tick_count = 0
         self.max_ticks = config.max_ticks
+        self._adaptive_state_snapshots: List[Dict[str, Any]] = []
+        self._adaptive_snapshot_interval = max(1, config.max_ticks // 10)
         self.correlator = SignalCorrelator(
             observation_window=config.signal_observation_window
         )
@@ -191,6 +193,7 @@ class SimEngine:
         # Phase 4: Unit degradation (variant-specific drain)
         for unit in self.units:
             if unit.is_active:
+                drain = getattr(unit, 'variant', None)
                 drain = getattr(unit, 'variant', None)
                 drain_rate = drain.power_drain_rate if drain else self.config.power_drain_rate
                 unit.degrade(drain_rate, self.rng)
@@ -480,6 +483,52 @@ class SimEngine:
                         "delta": abs(rec.get("power_ratio", 0.0) - 0.5),
                     })
 
+        # Phase 15: Adaptive state feedback update
+        if self.config.adaptive_enabled:
+            for unit in self.units:
+                if unit.is_active and hasattr(unit, '_adaptive_controller') and unit._adaptive_controller.enabled:
+                    # Gather local feedback from this tick's events
+                    feedback: Dict[str, float] = {}
+                    power_delta = -self.config.power_drain_rate
+                    for e in self.event_log.all_events():
+                        if e.tick == self.tick_count and e.unit_id == unit.unit_id:
+                            if e.event_type == EventType.HAZARD_ENCOUNTER:
+                                feedback["hazard_exposure"] = 1.0
+                                power_delta -= e.data.get("intensity", 0.0) * 2.0
+                            if e.event_type == EventType.UNIT_ACTION:
+                                act = e.data.get("action", "")
+                                if act == "HARVEST":
+                                    feedback["resource_extracted"] = 1.0
+                                    power_delta += 5.0
+                                elif act == "SCAN":
+                                    feedback["scan_result_count"] = 1.0
+                                elif act == "EMIT_SIGNAL":
+                                    feedback["signal_emitted"] = 1.0
+                                    power_delta -= unit.signal_energy_cost
+                                elif act == "MOVE":
+                                    if not e.data.get("success", True):
+                                        feedback["movement_blocked"] = 1.0
+                            if e.event_type == EventType.SIGNAL_RECEIVED:
+                                feedback["signal_observed"] = 1.0
+                    if not feedback:
+                        feedback["power_delta"] = 0.0
+                    else:
+                        feedback["power_delta"] = power_delta
+                    feedback["component_health_delta"] = 0.0
+                    unit._adaptive_state = unit._adaptive_controller.update_from_feedback(
+                        unit._adaptive_state, feedback, self.rng
+                    )
+
+        # Record adaptive state snapshots at intervals for long-run trace
+        if self.config.long_run_adaptation_enabled and self.tick_count % self._adaptive_snapshot_interval == 0:
+            for unit in self.units:
+                if hasattr(unit, '_adaptive_state'):
+                    self._adaptive_state_snapshots.append({
+                        "tick": self.tick_count,
+                        "unit_id": unit.unit_id,
+                        **unit._adaptive_state.to_dict(),
+                    })
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -567,3 +616,69 @@ class SimEngine:
     def get_summary_consistency_summary(self) -> Dict[str, Any]:
         """Get summary consistency analysis summary for artifact output."""
         return self.summary_consistency.get_summary()
+
+    def get_long_run_adaptation_summary(self) -> Dict[str, Any]:
+        """Get M14 long-run adaptation summary."""
+        active = [u for u in self.units if u.is_active]
+        # Compute action distributions from events
+        events = self.event_log.all_events()
+        action_events = [e for e in events if e.event_type == EventType.UNIT_ACTION]
+        early_cutoff = self.tick_count // 3
+        late_start = self.tick_count * 2 // 3
+        early_actions: Dict[str, int] = {}
+        late_actions: Dict[str, int] = {}
+        for e in action_events:
+            act = e.data.get("action", "unknown")
+            if e.tick <= early_cutoff:
+                early_actions[act] = early_actions.get(act, 0) + 1
+            elif e.tick >= late_start:
+                late_actions[act] = late_actions.get(act, 0) + 1
+        all_keys = set(list(early_actions.keys()) + list(late_actions.keys()))
+        dist_delta = {k: late_actions.get(k, 0) - early_actions.get(k, 0) for k in all_keys}
+        return {
+            "run_ticks": self.tick_count,
+            "initial_unit_count": len(self.units),
+            "final_active_unit_count": len(active),
+            "descendant_active_count": sum(1 for u in self.units if hasattr(u, '_generation_index') and u._generation_index > 0),
+            "unit_lifetime_summary": {
+                u.unit_id: {"active": u.is_active, "generation": getattr(u, '_generation_index', 0)}
+                for u in self.units
+            },
+            "action_distribution_early": early_actions,
+            "action_distribution_late": late_actions,
+            "action_distribution_delta": dist_delta,
+            "adaptive_state_delta_summary": {
+                u.unit_id: u._adaptive_state.to_dict()
+                for u in self.units if hasattr(u, '_adaptive_state')
+            },
+        }
+
+    def get_adaptive_state_traces(self) -> List[Dict[str, Any]]:
+        """Get adaptive state traces for all units."""
+        traces = []
+        for u in self.units:
+            if hasattr(u, '_adaptive_state'):
+                traces.append({
+                    "unit_id": u.unit_id,
+                    "tick": self.tick_count,
+                    **u._adaptive_state.to_dict(),
+                })
+        return traces
+
+    def get_adaptive_vs_static_comparison(self, static_summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Compare adaptive run against a static baseline summary."""
+        adaptive_summary = self.get_long_run_adaptation_summary()
+        if static_summary is None:
+            return {"adaptive_summary": adaptive_summary, "static_summary": None, "action_distribution_delta": {}}
+        a_dist = adaptive_summary.get("action_distribution_early", {})
+        s_dist = static_summary.get("action_distribution_early", {})
+        delta = {}
+        all_keys = set(list(a_dist.keys()) + list(s_dist.keys()))
+        for k in all_keys:
+            delta[k] = a_dist.get(k, 0) - s_dist.get(k, 0)
+        return {
+            "adaptive_summary": adaptive_summary,
+            "static_summary": static_summary,
+            "action_distribution_delta": delta,
+            "active_unit_count_delta": adaptive_summary.get("final_active_unit_count", 0) - static_summary.get("final_active_unit_count", 0),
+        }

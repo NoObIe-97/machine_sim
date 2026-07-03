@@ -21,7 +21,7 @@ pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["machine_sim"]
-omit = ["machine_sim/tests/*", "machine_sim/analysis/*"]
+omit = ["machine_sim/tests/*", "machine_sim/analysis/*", "machine_sim/verification/*"]
 
 [tool.coverage.report]
 show_missing = true

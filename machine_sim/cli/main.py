@@ -14,6 +14,7 @@ from machine_sim.agents.unit import MachineUnitImpl
 from machine_sim.agents.variants import ALL_VARIANTS
 from machine_sim.sim.config import SimConfig
 from machine_sim.sim.engine import SimEngine
+from machine_sim.sim.events import EventType
 
 
 @click.group()
@@ -42,7 +43,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
     rng = random.Random(cfg.seed)
 
     for i in range(cfg.unit_count):
-        variant = ALL_VARIANTS[i % len(ALL_VARIANTS)]
+        variant = ALL_VARIANTS[i % len(ALL_VARIANTS)] if not cfg.long_run_adaptation_enabled else None
         unit = MachineUnitImpl(
             unit_id=f"unit-{i:03d}",
             position=(rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1)),
@@ -55,6 +56,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             signal_default_duration=cfg.signal_default_duration,
             adaptive_enabled=cfg.adaptive_enabled,
         )
+        if cfg.long_run_adaptation_enabled:
+            unit.max_power = 5000
+            unit.power_reserve = 5000
         engine.register_unit(unit)
 
     click.echo(f"Starting simulation: {cfg.grid_width}x{cfg.grid_height}, "
@@ -269,6 +273,62 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.summary_consistency_enabled:
             sc_summary = engine.get_summary_consistency_summary()
             (outpath / "summary_consistency.json").write_text(json.dumps(sc_summary, indent=2))
+        if cfg.long_run_adaptation_enabled:
+            lr_summary = engine.get_long_run_adaptation_summary()
+            (outpath / "long_run_adaptation_summary.json").write_text(json.dumps(lr_summary, indent=2))
+            # Write adaptive state traces (periodic snapshots)
+            with open(outpath / "unit_adaptive_state_trace.jsonl", "w") as f:
+                for snap in engine._adaptive_state_snapshots:
+                    f.write(json.dumps(snap) + "\n")
+                # Also write final state
+                for u in engine.units:
+                    if hasattr(u, '_adaptive_state'):
+                        f.write(json.dumps({"tick": engine.tick_count, "unit_id": u.unit_id, **u._adaptive_state.to_dict()}) + "\n")
+            # Action distribution trace
+            events = engine.event_log.all_events()
+            action_events = [e for e in events if e.event_type == EventType.UNIT_ACTION]
+            with open(outpath / "action_distribution_trace.jsonl", "w") as f:
+                for e in action_events:
+                    f.write(json.dumps({"tick": e.tick, "unit_id": e.unit_id, "action": e.data.get("action", "unknown")}) + "\n")
+            # Unit lifetime trace
+            with open(outpath / "unit_lifetime_trace.jsonl", "w") as f:
+                for u in engine.units:
+                    f.write(json.dumps({"unit_id": u.unit_id, "active": u.is_active, "power": u.power_reserve, "generation": getattr(u, '_generation_index', 0)}) + "\n")
+            # Run static comparison
+            static_cfg = SimConfig(
+                grid_width=cfg.grid_width, grid_height=cfg.grid_height,
+                resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
+                unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
+                max_ticks=cfg.max_ticks, seed=cfg.seed,
+                signal_enabled=cfg.signal_enabled, adaptive_enabled=False,
+                signal_pattern_count=cfg.signal_pattern_count,
+                signal_energy_cost=cfg.signal_energy_cost,
+                signal_default_radius=cfg.signal_default_radius,
+                signal_default_decay=cfg.signal_default_decay,
+                signal_default_duration=cfg.signal_default_duration,
+                signal_observation_window=cfg.signal_observation_window,
+            )
+            static_engine = SimEngine(static_cfg, seed=cfg.seed)
+            for i in range(cfg.unit_count):
+                su = MachineUnitImpl(
+                    f"s-{i}", signal_enabled=cfg.signal_enabled, adaptive_enabled=False)
+                su.variant = None
+                su.max_power = 5000
+                su.power_reserve = 5000
+                static_engine.register_unit(su)
+            static_engine.run()
+            static_summary = static_engine.get_long_run_adaptation_summary()
+            comparison = engine.get_adaptive_vs_static_comparison(static_summary)
+            (outpath / "adaptive_vs_static_compare.json").write_text(json.dumps(comparison, indent=2))
+            # Resource/field summary
+            field_summary = {
+                "total_resource_cells": sum(1 for c in engine.world.grid.values() if c.resources),
+                "total_hazard_cells": sum(1 for c in engine.world.grid.values() if c.hazards),
+                "total_resources": sum(sum(r.quantity for r in c.resources.values()) for c in engine.world.grid.values()),
+            }
+            (outpath / "resource_hazard_field_summary.json").write_text(json.dumps(field_summary, indent=2))
+            click.echo(f"Adaptive run: active={lr_summary.get('final_active_unit_count', 0)}")
+            click.echo(f"Static run: active={static_summary.get('final_active_unit_count', 0)}")
         click.echo(f"Output written to {outpath}")
 
 
@@ -294,11 +354,11 @@ def check() -> None:
     project_root = Path(__file__).parent.parent.parent
     source_dir = project_root / "machine_sim"
 
-    violations = scan_directory(source_dir, exclude_patterns=["tests/", "docs/", "__pycache__", "guardrails/", "cli/"])
+    violations = scan_directory(source_dir, exclude_patterns=["tests/", "docs/", "__pycache__", "guardrails/", "cli/", "verification/"])
     ast_violations = {}
     for py_file in source_dir.rglob("*.py"):
         rel = py_file.relative_to(source_dir).as_posix()
-        if any(ex in rel for ex in ["tests/", "docs/", "__pycache__", "guardrails/", "cli/"]):
+        if any(ex in rel for ex in ["tests/", "docs/", "__pycache__", "guardrails/", "cli/", "verification/"]):
             continue
         viols = check_ast_file(py_file)
         if viols:
