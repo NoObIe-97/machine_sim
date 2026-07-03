@@ -34,6 +34,7 @@
 - `0f6cc64` — Milestone 11 bounded operational trace compression
 - `0be8000` — Milestone 11A trace compression hardening
 - `a6e7a91` — Milestone 11B review package commit sync
+- `a2854bd` — Milestone 12 trace drift and compression stability
 
 ## Branch Name
 `feature/milestone-1`

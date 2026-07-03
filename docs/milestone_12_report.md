@@ -52,7 +52,49 @@ Implemented multi-generation trace drift and compression stability analysis, inc
 
 ## Commands Run
 
-Full test suite, coverage, guardrail check, and M1-M12 regression demos.
+```bash
+python -m pytest machine_sim/tests/ -v
+python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
+python -m machine_sim.cli.main check
+
+python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo_m1
+python -m machine_sim.cli.main inspect output/demo_m1
+
+python -m machine_sim.cli.main run -c configs/milestone_2_crowded.toml -t 100 -s 42 -o output/demo_m2
+python -m machine_sim.cli.main inspect output/demo_m2
+
+python -m machine_sim.cli.main run -c configs/milestone_3_signals.toml -t 100 -s 42 -o output/demo_m3
+python -m machine_sim.cli.main inspect output/demo_m3
+
+python -m machine_sim.cli.main run -c configs/milestone_4_correlation.toml -t 100 -s 42 -o output/demo_m4
+python -m machine_sim.cli.main inspect output/demo_m4
+
+python -m machine_sim.cli.main run -c configs/milestone_5_adaptive.toml -t 150 -s 42 -o output/demo_m5
+python -m machine_sim.cli.main inspect output/demo_m5
+python -m machine_sim.cli.main compare -c configs/milestone_5_adaptive.toml -t 150 -s 42
+
+python -m machine_sim.cli.main run -c configs/milestone_6_fabrication.toml -t 200 -s 42 -o output/demo_m6
+python -m machine_sim.cli.main inspect output/demo_m6
+
+python -m machine_sim.cli.main run -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42 -o output/demo_m7
+python -m machine_sim.cli.main inspect output/demo_m7
+python -m machine_sim.cli.main capsule-compare -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42
+
+python -m machine_sim.cli.main run -c configs/milestone_8_telemetry_reconciliation.toml -t 200 -s 42 -o output/demo_m8
+python -m machine_sim.cli.main inspect output/demo_m8
+
+python -m machine_sim.cli.main run -c configs/milestone_9_resource_pressure.toml -t 200 -s 42 -o output/demo_m9
+python -m machine_sim.cli.main inspect output/demo_m9
+
+python -m machine_sim.cli.main run -c configs/milestone_10_signal_field_dynamics.toml -t 200 -s 42 -o output/demo_m10
+python -m machine_sim.cli.main inspect output/demo_m10
+
+python -m machine_sim.cli.main run -c configs/milestone_11_trace_compression.toml -t 200 -s 42 -o output/demo_m11
+python -m machine_sim.cli.main inspect output/demo_m11
+
+python -m machine_sim.cli.main run -c configs/milestone_12_trace_drift.toml -t 220 -s 42 -o output/demo_m12
+python -m machine_sim.cli.main inspect output/demo_m12
+```
 
 ## Test Results
 
