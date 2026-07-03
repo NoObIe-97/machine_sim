@@ -200,6 +200,35 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                    f"retained={ret.get('retained_summary_count', 0)}, "
                    f"dropped={ret.get('retention_drop_count', 0)}")
 
+    # Output summary consistency
+    if cfg.summary_consistency_enabled:
+        sc = engine.get_summary_consistency_summary()
+        cu = sc.get("cross_unit", {})
+        click.echo(f"Summary consistency: units={cu.get('unit_summary_count', 0)}, "
+                   f"pairs={cu.get('unit_pair_count', 0)}, "
+                   f"avg_delta={cu.get('avg_unit_summary_delta', 0):.3f}, "
+                   f"score={cu.get('summary_consistency_score', 0):.3f}")
+        rs = sc.get("retention_stability", {})
+        click.echo(f"Retention stability: windows={rs.get('retention_window_count', 0)}, "
+                   f"variance={rs.get('avg_retention_variance', 0):.3f}, "
+                   f"stability={rs.get('retention_stability_score', 0):.3f}, "
+                   f"drop_rate={rs.get('retention_drop_rate', 0):.3f}")
+        cc = sc.get("compression_convergence", {})
+        click.echo(f"Compression convergence: windows={cc.get('compression_window_count', 0)}, "
+                   f"ratio={cc.get('avg_compression_ratio', 0):.3f}, "
+                   f"delta={cc.get('compression_ratio_delta', 0):.3f}, "
+                   f"score={cc.get('compression_convergence_score', 0):.3f}")
+        ge = sc.get("cross_generation_envelope", {})
+        click.echo(f"Generation envelope: records={ge.get('cross_generation_envelope_count', 0)}, "
+                   f"span={ge.get('generation_index_span', 0)}, "
+                   f"width={ge.get('generation_envelope_width', 0):.3f}, "
+                   f"stability={ge.get('generation_envelope_stability', 0):.3f}")
+        cb = sc.get("combined", {})
+        click.echo(f"Combined stability: windows={cb.get('combined_window_count', 0)}, "
+                   f"consistency={cb.get('combined_consistency_score', 0):.3f}, "
+                   f"stability={cb.get('combined_stability_score', 0):.3f}, "
+                   f"delta={cb.get('combined_delta_score', 0):.3f}")
+
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
@@ -237,6 +266,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.trace_drift_enabled:
             trace_drift_summary = engine.get_trace_drift_summary()
             (outpath / "trace_drift.json").write_text(json.dumps(trace_drift_summary, indent=2))
+        if cfg.summary_consistency_enabled:
+            sc_summary = engine.get_summary_consistency_summary()
+            (outpath / "summary_consistency.json").write_text(json.dumps(sc_summary, indent=2))
         click.echo(f"Output written to {outpath}")
 
 

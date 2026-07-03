@@ -1,4 +1,4 @@
-# Milestone 12 Final Review Package
+# Milestone 13 Final Review Package
 
 ## Commit History
 
@@ -35,6 +35,7 @@
 - `0be8000` — Milestone 11A trace compression hardening
 - `a6e7a91` — Milestone 11B review package commit sync
 - `a2854bd` — Milestone 12 trace drift and compression stability
+- `0c50e70` — Milestone 12A documentation stage-closing sync
 
 ## Branch Name
 `feature/milestone-1`
@@ -43,15 +44,15 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-228 passed in 20.34s
+243 passed in 24.80s
 
 ## Coverage (Final)
-81.85%
+81.50%
 
 ## Guardrail Result
 All guardrail checks passed.
 
-## Full M1–M12 Regression Summary
+## Full M1-M13 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -66,19 +67,21 @@ All guardrail checks passed.
 | M9 | 5 pressure cells, avg_depletion=0.366 |
 | M10 | 3 patterns, 30 signals, 4 clusters |
 | M11 | raw=100, compressed=20, ratio=0.200, stability=0.656 |
-| M12 | generations=100, envelope=100, replay_stability=0.011, capsule_compat=0.985, retention=100/50 |
+| M12 | generations=100, envelope=100, capsule_compat=0.985, retention=100/50 |
+| M13 | units=100, pairs=4950, consistency=0.961, compression_score=0.800, combined_stability=0.925 |
 
-## M12 Output Summary
+## M13 Output Summary
 
 ```
-Trace drift: generations=100, span=1, avg_delta=0.000, max_delta=0.000
-Drift envelope: records=100, avg_width=0.337, max_width=0.358
-Replay stability: windows=100, avg_delta=0.011, stability_floor=0.302
-Capsule trace check: count=100, compatibility=0.985, power_delta=0.015
-Retention: records=100, span=99, retained=50, dropped=50
+Summary consistency: units=100, pairs=4950, avg_delta=0.039, score=0.961
+Retention stability: windows=100, variance=0.250, stability=0.975, drop_rate=0.000
+Compression convergence: windows=100, ratio=0.008, delta=0.200, score=0.800
+Generation envelope: records=100, span=2, width=0.000, stability=1.000
+Combined stability: windows=100, consistency=0.961, stability=0.925, delta=0.163
 ```
 
 ## Artifact Paths
+- `output/demo_m13/summary_consistency.json`
 - `output/demo_m12/trace_drift.json`
 - `output/demo_m11/trace_compression.json`
 - `output/demo_m10/signal_field_dynamics.json`
@@ -88,6 +91,7 @@ Retention: records=100, span=99, retained=50, dropped=50
 - `output/demo_m8/lineage_drift.json`
 
 ## Report Paths
+- `docs/milestone_13_report.md`
 - `docs/milestone_12_report.md`
 - `docs/milestone_11_report.md`
 - `docs/milestone_10_report.md`

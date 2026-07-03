@@ -12,6 +12,7 @@ from machine_sim.analysis.pressure import PressureAnalyzer
 from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationEngine, TelemetryTracker
 from machine_sim.analysis.trace_compression import TraceCompressor
 from machine_sim.analysis.trace_drift import TraceDriftAnalyzer
+from machine_sim.analysis.summary_consistency import SummaryConsistencyAnalyzer
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
@@ -62,6 +63,7 @@ class SimEngine:
         self.field_dynamics = SignalFieldDynamics(enabled=config.signal_dynamics_enabled)
         self.trace_compressor = TraceCompressor(enabled=config.trace_compression_enabled)
         self.trace_drift = TraceDriftAnalyzer(enabled=config.trace_drift_enabled)
+        self.summary_consistency = SummaryConsistencyAnalyzer(enabled=config.summary_consistency_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -416,6 +418,68 @@ class SimEngine:
                     if len(self.trace_drift._retention_records) > self.trace_drift.max_records:
                         self.trace_drift._retention_records = self.trace_drift._retention_records[-self.trace_drift.max_records:]
 
+        # Phase 14: Summary consistency analysis
+        if self.summary_consistency.enabled:
+            # Cross-unit diagnostic summary comparison
+            if self.trace_compressor.enabled:
+                segments = self.trace_compressor.get_segments()
+                # Group segments by unit
+                unit_segs: Dict[str, List[Any]] = {}
+                for seg in segments:
+                    if seg.unit_id not in unit_segs:
+                        unit_segs[seg.unit_id] = []
+                    unit_segs[seg.unit_id].append(seg)
+                for uid, segs in unit_segs.items():
+                    avg_pwr = sum(s.avg_power_ratio for s in segs) / len(segs)
+                    avg_hlth = sum(s.avg_component_health for s in segs) / len(segs)
+                    total_sig = sum(s.signal_count for s in segs)
+                    total_obs = sum(s.observation_count for s in segs)
+                    self.summary_consistency.record_unit_summary({
+                        "unit_id": uid,
+                        "power_ratio": avg_pwr,
+                        "sensor_health": avg_hlth,
+                        "signal_count": total_sig,
+                        "replay_error": abs(avg_pwr - 0.5),
+                    })
+            # Windowed retention stability
+            if self.trace_drift.enabled:
+                ret_records = self.trace_drift._retention_records
+                if ret_records:
+                    window_size = max(1, len(ret_records) // max(1, self.summary_consistency.window))
+                    for i in range(0, len(ret_records), window_size):
+                        w = ret_records[i:i + window_size]
+                        if not w:
+                            continue
+                        ticks = [r.get("tick", 0) for r in w]
+                        variance = 0.0
+                        if len(ticks) > 1:
+                            mean_t = sum(ticks) / len(ticks)
+                            variance = sum((t - mean_t) ** 2 for t in ticks) / len(ticks)
+                        self.summary_consistency.record_retention({
+                            "tick": ticks[0] if ticks else 0,
+                            "variance": variance,
+                            "dropped": 0,
+                            "total": len(w),
+                        })
+            # Compression ratio convergence
+            if self.trace_compressor.enabled:
+                tc_summary = self.trace_compressor.compress()
+                self.summary_consistency.record_compression_ratio(tc_summary.compression_ratio)
+                # Also record per-segment ratios
+                segs = self.trace_compressor.get_segments()
+                for seg in segs:
+                    self.summary_consistency.record_compression_ratio(
+                        seg.signal_count / max(1, seg.signal_count + seg.observation_count)
+                    )
+            # Cross-generation diagnostic envelope
+            if self.trace_drift.enabled:
+                gen_records = self.trace_drift._generation_records
+                for rec in gen_records:
+                    self.summary_consistency.record_generation_delta({
+                        "generation_index": rec.get("generation_index", 0),
+                        "delta": abs(rec.get("power_ratio", 0.0) - 0.5),
+                    })
+
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""
         summary = self.fabrication_engine.get_summary()
@@ -499,3 +563,7 @@ class SimEngine:
     def get_trace_drift_summary(self) -> Dict[str, Any]:
         """Get trace drift analysis summary for artifact output."""
         return self.trace_drift.get_summary()
+
+    def get_summary_consistency_summary(self) -> Dict[str, Any]:
+        """Get summary consistency analysis summary for artifact output."""
+        return self.summary_consistency.get_summary()
