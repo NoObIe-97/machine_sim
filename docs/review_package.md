@@ -38,7 +38,7 @@
 - `0c50e70` — Milestone 12A documentation stage-closing sync
 - `e9c0a87` — Milestone 13 compressed summary cross-unit consistency
 - `760dd11` — Milestone 14 initial long-run adaptive control
-- `<pending>` — Milestone 14A goal-spec hardening
+- `fa8fbb8` — Milestone 14A goal-spec hardening
 
 ## Branch Name
 `feature/milestone-1`
