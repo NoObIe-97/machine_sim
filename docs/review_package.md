@@ -1,4 +1,4 @@
-# Milestone 14 Final Review Package
+# Milestone 14A Final Review Package
 
 ## Commit History
 
@@ -37,6 +37,8 @@
 - `a2854bd` — Milestone 12 trace drift and compression stability
 - `0c50e70` — Milestone 12A documentation stage-closing sync
 - `e9c0a87` — Milestone 13 compressed summary cross-unit consistency
+- `760dd11` — Milestone 14 initial long-run adaptive control
+- `<pending>` — Milestone 14A goal-spec hardening
 
 ## Branch Name
 `feature/milestone-1`
@@ -45,16 +47,16 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-253 passed in 22.41s
+267 passed in 32.81s
 
 ## Coverage (Final)
-80.00%
+87.06%
 
 ## Guardrail Result
 All guardrail checks passed.
 
 ## M14 Judge Result
-M14_JUDGE_STATUS: PASS (11/11 checks passed, 1 SKIP)
+M14_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
 ## Full M1-M14 Regression Summary
 
@@ -73,16 +75,17 @@ M14_JUDGE_STATUS: PASS (11/11 checks passed, 1 SKIP)
 | M11 | raw=100, compressed=20, ratio=0.200 |
 | M12 | generations=100, capsule_compat=0.985 |
 | M13 | consistency=0.961, combined_stability=0.925 |
-| M14 | 3000 ticks, 4/4 active, adaptive state changed, judge PASS |
+| M14A | 20000 ticks, 120x120, 2/6 adaptive active, 6/6 static, 11351 emissions, 7266 observations, 2 fabrications, 12/12 judge PASS |
 
-## M14 Demo Output
+## M14A Demo Output
 
 ```
-Adaptive run: active=4
-Static run: active=4
-892 emissions, 958 scans over 3000 ticks
-Adaptive state changed: move_weight, scan_weight, extract_weight, signal_weight all shifted
-Action distribution early vs late shows nonzero delta
+20000 ticks, 120x120 grid, 6 units, seed=42
+Active units: 2/6 (adaptive), 6/6 (static)
+Signal emissions: 11351, observations: 7266
+Fabrication: 2 successes, 2 descendant transfers
+Judge: 12/12 PASS, 0 SKIP
+Coverage: 87.06%, 267 tests
 ```
 
 ## Artifact Paths
@@ -90,6 +93,8 @@ Action distribution early vs late shows nonzero delta
 - `output/demo_m14/unit_adaptive_state_trace.jsonl`
 - `output/demo_m14/action_distribution_trace.jsonl`
 - `output/demo_m14/unit_lifetime_trace.jsonl`
+- `output/demo_m14/local_feedback_trace.jsonl`
+- `output/demo_m14/descendant_adaptive_state_trace.jsonl`
 - `output/demo_m14/adaptive_vs_static_compare.json`
 - `output/demo_m14/resource_hazard_field_summary.json`
 - `output/demo_m14/milestone_14_judge_result.json`

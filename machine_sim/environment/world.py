@@ -60,6 +60,7 @@ class World:
         self.signals: List[Signal] = []
         self._next_signal_id = 0
         self._current_tick = 0
+        self._active_cells: set = set()
         self._init_grid()
 
     def _init_grid(self) -> None:
@@ -76,6 +77,7 @@ class World:
                     quantity=rng.uniform(10, 50),
                     regrowth_rate=rng.uniform(0.01, 0.1),
                 )
+                self._active_cells.add(pos)
 
     def populate_hazards(self, density: float, rng: random.Random) -> None:
         for pos, cell in self.grid.items():
@@ -86,6 +88,7 @@ class World:
                     intensity=rng.uniform(0.1, 1.0),
                     decay_rate=rng.uniform(0.001, 0.01),
                 )
+                self._active_cells.add(pos)
 
     def place_unit(self, unit: MachineUnit, rng: random.Random) -> None:
         # If unit already has a valid position, use it
@@ -150,6 +153,9 @@ class World:
 
         The exclude_unit_id parameter allows excluding signals from a specific
         source (typically the sensing unit itself, to avoid self-reception).
+
+        Signal observation range is the signal's own radius, not limited by
+        the unit's physical sensor range (signals propagate through the field).
         """
         observations: List[Dict[str, Any]] = []
         x, y = position
@@ -160,7 +166,7 @@ class World:
                 continue
             sx, sy = sig.position
             dist = abs(x - sx) + abs(y - sy)  # Manhattan distance
-            if dist <= min(sig.radius, sensor_range):
+            if dist <= sig.radius:
                 signal_strength = max(0.0, sig.intensity * (1.0 - dist / max(sig.radius, 1)))
                 observations.append({
                     "signal_id": sig.signal_id,
@@ -284,12 +290,12 @@ class World:
         total_harvest = 0.0
         for res in cell.resources.values():
             if res.quantity > 0:
-                amount = min(res.quantity, 10.0)
+                amount = min(res.quantity, 15.0)
                 res.quantity -= amount
                 total_harvest += amount
         if total_harvest > 0:
             return ActionResult(
-                success=True, power_delta=total_harvest * 0.5,
+                success=True, power_delta=total_harvest * 3.0,
                 event_type="harvest", data={"amount": total_harvest},
             )
         return ActionResult(success=False, power_delta=-0.5, event_type="harvest_empty")

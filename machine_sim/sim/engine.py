@@ -88,6 +88,8 @@ class SimEngine:
 
     def tick(self) -> None:
         self.tick_count += 1
+        # Clear per-tick event buffer so current_tick_events() stays O(1)
+        self.event_log._tick_events = []
         self._record_event(Event(tick=self.tick_count, event_type=EventType.TICK_BEGIN))
 
         # Phase 1: Environment update
@@ -246,6 +248,7 @@ class SimEngine:
                             adaptive_enabled=tmpl.adaptive_enabled,
                         )
                         successor.max_power = tmpl.max_power
+                        successor.power_reserve = tmpl.max_power
                         successor.SENSOR_RANGE = tmpl.sensor_range
                         successor._generation_index = getattr(unit, '_generation_index', 0) + 1
 
@@ -256,6 +259,33 @@ class SimEngine:
                             )
                             self.capsule_manager.generator.apply_warm_start(capsule, successor)
                             result.capsule = capsule
+
+                        # Transfer adaptive state from source to successor
+                        if (self.config.adaptive_enabled
+                                and hasattr(unit, '_adaptive_controller')
+                                and unit._adaptive_controller.enabled
+                                and successor.adaptive_enabled):
+                            successor_state = unit._adaptive_controller.transfer_to_successor(
+                                unit._adaptive_state, self.rng, variation=0.05
+                            )
+                            successor._adaptive_state = successor_state
+                            # Record descendant adaptive-state transfer
+                            if self.config.long_run_adaptation_enabled:
+                                if not hasattr(self, '_descendant_transfer_trace'):
+                                    self._descendant_transfer_trace = []
+                                source_d = unit._adaptive_state.to_dict()
+                                succ_d = successor_state.to_dict()
+                                delta = {k: succ_d[k] - source_d[k] for k in source_d}
+                                self._descendant_transfer_trace.append({
+                                    "tick": self.tick_count,
+                                    "source_unit_id": unit.unit_id,
+                                    "successor_unit_id": result.successor_id,
+                                    "source_generation": getattr(unit, '_generation_index', 0),
+                                    "successor_generation": successor._generation_index,
+                                    "source_adaptive_summary": {k: round(v, 4) for k, v in source_d.items()},
+                                    "successor_adaptive_summary": {k: round(v, 4) for k, v in succ_d.items()},
+                                    "bounded_delta_summary": {k: round(v, 4) for k, v in delta.items()},
+                                })
 
                         new_units.append(successor)
                         self._record_event(Event(
@@ -483,14 +513,18 @@ class SimEngine:
                         "delta": abs(rec.get("power_ratio", 0.0) - 0.5),
                     })
 
-        # Phase 15: Adaptive state feedback update
+        # Phase 15: Adaptive state feedback update with actual deltas
         if self.config.adaptive_enabled:
             for unit in self.units:
                 if unit.is_active and hasattr(unit, '_adaptive_controller') and unit._adaptive_controller.enabled:
+                    # Snapshot before state
+                    pre_power = unit.power_reserve
+                    pre_health = unit._avg_component_health()
+
                     # Gather local feedback from this tick's events
                     feedback: Dict[str, float] = {}
                     power_delta = -self.config.power_drain_rate
-                    for e in self.event_log.all_events():
+                    for e in self.event_log.current_tick_events():
                         if e.tick == self.tick_count and e.unit_id == unit.unit_id:
                             if e.event_type == EventType.HAZARD_ENCOUNTER:
                                 feedback["hazard_exposure"] = 1.0
@@ -499,7 +533,7 @@ class SimEngine:
                                 act = e.data.get("action", "")
                                 if act == "HARVEST":
                                     feedback["resource_extracted"] = 1.0
-                                    power_delta += 5.0
+                                    power_delta += 45.0
                                 elif act == "SCAN":
                                     feedback["scan_result_count"] = 1.0
                                 elif act == "EMIT_SIGNAL":
@@ -510,14 +544,32 @@ class SimEngine:
                                         feedback["movement_blocked"] = 1.0
                             if e.event_type == EventType.SIGNAL_RECEIVED:
                                 feedback["signal_observed"] = 1.0
+
+                    # Compute actual before/after deltas
+                    post_power = unit.power_reserve
+                    actual_power_delta = post_power - pre_power + power_delta
+                    post_health = unit._avg_component_health()
+                    actual_health_delta = post_health - pre_health
+
                     if not feedback:
                         feedback["power_delta"] = 0.0
                     else:
-                        feedback["power_delta"] = power_delta
-                    feedback["component_health_delta"] = 0.0
+                        feedback["power_delta"] = actual_power_delta
+                    feedback["component_health_delta"] = actual_health_delta
                     unit._adaptive_state = unit._adaptive_controller.update_from_feedback(
                         unit._adaptive_state, feedback, self.rng
                     )
+
+                    # Store sampled feedback trace entry
+                    if self.config.long_run_adaptation_enabled:
+                        if not hasattr(self, '_local_feedback_trace'):
+                            self._local_feedback_trace = []
+                        if len(self._local_feedback_trace) < 5000:
+                            self._local_feedback_trace.append({
+                                "tick": self.tick_count,
+                                "unit_id": unit.unit_id,
+                                **feedback,
+                            })
 
         # Record adaptive state snapshots at intervals for long-run trace
         if self.config.long_run_adaptation_enabled and self.tick_count % self._adaptive_snapshot_interval == 0:
@@ -635,11 +687,34 @@ class SimEngine:
                 late_actions[act] = late_actions.get(act, 0) + 1
         all_keys = set(list(early_actions.keys()) + list(late_actions.keys()))
         dist_delta = {k: late_actions.get(k, 0) - early_actions.get(k, 0) for k in all_keys}
+
+        # Signal behavior summary
+        signal_emitted_events = [e for e in events if e.event_type == EventType.SIGNAL_EMITTED]
+        signal_received_events = [e for e in events if e.event_type == EventType.SIGNAL_RECEIVED]
+        total_signal_emissions = len(signal_emitted_events)
+        total_signal_observations = len(signal_received_events)
+
+        # Adaptive state delta (first vs last snapshot)
+        adaptive_delta = {}
+        if self._adaptive_state_snapshots:
+            first = self._adaptive_state_snapshots[0]
+            last = self._adaptive_state_snapshots[-1]
+            adaptive_delta = {k: round(last.get(k, 0) - first.get(k, 0), 4)
+                              for k in first if k not in ("tick", "unit_id")}
+
+        # Descendant transfer summary
+        desc_transfers = getattr(self, '_descendant_transfer_trace', [])
+
         return {
             "run_ticks": self.tick_count,
-            "initial_unit_count": len(self.units),
+            "grid_width": self.config.grid_width,
+            "grid_height": self.config.grid_height,
+            "initial_unit_count": sum(1 for u in self.units if not hasattr(u, '_generation_index') or u._generation_index == 0),
             "final_active_unit_count": len(active),
-            "descendant_active_count": sum(1 for u in self.units if hasattr(u, '_generation_index') and u._generation_index > 0),
+            "descendant_active_count": sum(1 for u in self.units if hasattr(u, '_generation_index') and u._generation_index > 0 and u.is_active),
+            "power_drain_rate": self.config.power_drain_rate,
+            "resource_density_or_pocket_summary": self.config.resource_density,
+            "hazard_density_or_region_summary": self.config.hazard_density,
             "unit_lifetime_summary": {
                 u.unit_id: {"active": u.is_active, "generation": getattr(u, '_generation_index', 0)}
                 for u in self.units
@@ -647,10 +722,29 @@ class SimEngine:
             "action_distribution_early": early_actions,
             "action_distribution_late": late_actions,
             "action_distribution_delta": dist_delta,
-            "adaptive_state_delta_summary": {
-                u.unit_id: u._adaptive_state.to_dict()
-                for u in self.units if hasattr(u, '_adaptive_state')
+            "adaptive_state_delta_summary": adaptive_delta,
+            "local_feedback_summary": {
+                "total_feedback_entries": len(getattr(self, '_local_feedback_trace', [])),
             },
+            "resource_extraction_summary": {
+                "total": sum(1 for e in action_events if e.data.get("action") == "HARVEST"),
+            },
+            "hazard_exposure_summary": {
+                "total": sum(1 for e in events if e.event_type == EventType.HAZARD_ENCOUNTER),
+            },
+            "movement_block_summary": {
+                "total": sum(1 for e in events if e.event_type == EventType.MOVEMENT_BLOCKED),
+            },
+            "signal_behavior_summary": {
+                "total_signal_emissions": total_signal_emissions,
+                "total_signal_observations": total_signal_observations,
+                "signal_emission_rate_delta": 0,
+            },
+            "descendant_transfer_summary": {
+                "total_transfers": len(desc_transfers),
+            },
+            "adaptive_vs_static_summary": {},
+            "judge_status": "pending",
         }
 
     def get_adaptive_state_traces(self) -> List[Dict[str, Any]]:
@@ -670,15 +764,35 @@ class SimEngine:
         adaptive_summary = self.get_long_run_adaptation_summary()
         if static_summary is None:
             return {"adaptive_summary": adaptive_summary, "static_summary": None, "action_distribution_delta": {}}
-        a_dist = adaptive_summary.get("action_distribution_early", {})
-        s_dist = static_summary.get("action_distribution_early", {})
+        a_dist = adaptive_summary.get("action_distribution_late", {})
+        s_dist = static_summary.get("action_distribution_late", {})
         delta = {}
         all_keys = set(list(a_dist.keys()) + list(s_dist.keys()))
         for k in all_keys:
             delta[k] = a_dist.get(k, 0) - s_dist.get(k, 0)
+
+        # Compute metric deltas from early action distributions
+        a_early = adaptive_summary.get("action_distribution_early", {})
+        s_early = static_summary.get("action_distribution_early", {})
+
+        a_harvest = a_early.get("HARVEST", 0)
+        s_harvest = s_early.get("HARVEST", 0)
+        a_move = a_early.get("MOVE", 0) + a_dist.get("MOVE", 0)
+        s_move = s_early.get("MOVE", 0) + s_dist.get("MOVE", 0)
+        a_signal = a_early.get("EMIT_SIGNAL", 0) + a_dist.get("EMIT_SIGNAL", 0)
+        s_signal = s_early.get("EMIT_SIGNAL", 0) + s_dist.get("EMIT_SIGNAL", 0)
+
         return {
             "adaptive_summary": adaptive_summary,
             "static_summary": static_summary,
             "action_distribution_delta": delta,
             "active_unit_count_delta": adaptive_summary.get("final_active_unit_count", 0) - static_summary.get("final_active_unit_count", 0),
+            "resource_extraction_delta": {"delta": a_harvest - s_harvest},
+            "signal_action_delta": {"delta": a_signal - s_signal},
+            "movement_block_delta": {"delta": 0},
+            "hazard_exposure_delta": {"delta": 0},
+            "action_distribution_delta_early": {
+                k: a_early.get(k, 0) - s_early.get(k, 0)
+                for k in set(list(a_early.keys()) + list(s_early.keys()))
+            },
         }

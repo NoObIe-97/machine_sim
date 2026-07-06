@@ -83,12 +83,11 @@ class MachineUnitImpl(MachineUnit):
         field_summary = self._field_tracker.get_summary(tick)
         self._lifetime_ticks = tick
 
-        # Priority 1: Critical power — harvest immediately
+        # --- Critical safety overrides (always active) ---
         if power_ratio < 0.15:
             return Action(ActionType.HARVEST)
 
-        # Priority 2: Low power — move toward resources
-        if power_ratio < 0.4:
+        if power_ratio < 0.30:
             readings = list(self.sensor_readings)
             if readings:
                 resource_map = build_resource_map(readings)
@@ -97,56 +96,104 @@ class MachineUnitImpl(MachineUnit):
                     return Action(ActionType.MOVE, target_position=best)
             return Action(ActionType.HARVEST)
 
-        # Priority 3: Degraded critical component — maintain
         critical = self._weakest_critical()
-        if critical and critical.health < 0.3:
+        if critical and critical.health < 0.20:
             return Action(ActionType.MAINTAIN, target_component=critical.name)
 
-        # Priority 4: Signal emission — adaptive modulation of interval/params
-        if self.signal_enabled and power_ratio > 0.5:
-            if self.adaptive_enabled:
-                # Adaptive: signal emission rate modulates interval
-                base_interval = 5
-                interval = max(2, int(base_interval * (2.0 - self._adaptive_state.signal_emission_rate)))
+        # --- Adaptive action selection (normal operating ticks) ---
+        if self.adaptive_enabled:
+            readings = list(self.sensor_readings)
+            has_resource_nearby = False
+            has_hazard_nearby = False
+            for r in readings:
+                if hasattr(r, 'resource_type') and r.resource_quantity > 0:
+                    has_resource_nearby = True
+                if hasattr(r, 'hazard_level') and r.hazard_level > 0:
+                    has_hazard_nearby = True
+
+            scores = self._adaptive_controller.compute_action_scores(
+                self._adaptive_state, power_ratio,
+                has_resource_nearby, has_hazard_nearby,
+            )
+
+            # Weighted random selection from scores
+            import random as _rng
+            r = _rng.Random(tick * 1000 + hash(self.unit_id))
+            actions_list = list(scores.keys())
+            weights = [scores[a] for a in actions_list]
+            total_w = sum(weights) or 1.0
+            weights = [w / total_w for w in weights]
+            cumul = 0.0
+            roll = r.random()
+            chosen = actions_list[-1]
+            for a, w in zip(actions_list, weights):
+                cumul += w
+                if roll < cumul:
+                    chosen = a
+                    break
+
+            if chosen == "move":
+                readings = list(self.sensor_readings)
+                if readings:
+                    resource_map = build_resource_map(readings)
+                    best = gradient_direction(self.position, resource_map)
+                    if best and best != self.position:
+                        return Action(ActionType.MOVE, target_position=best)
+                return Action(ActionType.MOVE)
+
+            elif chosen == "scan":
+                return Action(ActionType.SCAN)
+
+            elif chosen == "harvest":
+                return Action(ActionType.HARVEST)
+
+            elif chosen == "signal":
+                if self.signal_enabled:
+                    base_interval = 5
+                    interval = max(2, int(base_interval * (2.0 - self._adaptive_state.signal_emission_rate)))
+                    if tick - self._last_signal_tick >= interval:
+                        self._last_signal_tick = tick
+                        pattern_id = (tick + int(self._adaptive_state.signal_pattern_bias * 10)) % self.signal_pattern_count
+                        intensity = 0.5 + self._adaptive_state.signal_emission_rate * 0.5
+                        radius = self.signal_default_radius + int(self._adaptive_state.signal_radius_bias * 2)
+                        return Action(
+                            ActionType.EMIT_SIGNAL,
+                            parameters={
+                                "pattern_id": pattern_id,
+                                "intensity": intensity,
+                                "radius": radius,
+                                "decay_rate": self.signal_default_decay,
+                                "duration": self.signal_default_duration,
+                                "energy_cost": self.signal_energy_cost,
+                            },
+                        )
+                # Fallback if signal not ready
+                return Action(ActionType.SCAN)
+
             else:
-                interval = 5
+                return Action(ActionType.IDLE)
 
-            if tick - self._last_signal_tick >= interval:
+        # --- Static fallback (non-adaptive units) ---
+        if self.signal_enabled and power_ratio > 0.5:
+            if tick - self._last_signal_tick >= 5:
                 self._last_signal_tick = tick
-                if self.adaptive_enabled:
-                    pattern_id = (tick + int(self._adaptive_state.signal_pattern_bias * 10)) % self.signal_pattern_count
-                    intensity = 0.5 + self._adaptive_state.signal_emission_rate * 0.5
-                    radius = self.signal_default_radius + int(self._adaptive_state.signal_radius_bias * 2)
-                else:
-                    pattern_id = tick % self.signal_pattern_count
-                    intensity = 1.0
-                    radius = self.signal_default_radius
-
                 return Action(
                     ActionType.EMIT_SIGNAL,
                     parameters={
-                        "pattern_id": pattern_id,
-                        "intensity": intensity,
-                        "radius": radius,
+                        "pattern_id": tick % self.signal_pattern_count,
+                        "intensity": 1.0,
+                        "radius": self.signal_default_radius,
                         "decay_rate": self.signal_default_decay,
                         "duration": self.signal_default_duration,
                         "energy_cost": self.signal_energy_cost,
                     },
                 )
 
-        # Priority 5: Scan — adaptive modulation of interval
         if power_ratio < 0.7:
-            if self.adaptive_enabled:
-                base_scan = 3
-                scan_interval = max(1, int(base_scan * (2.0 - self._adaptive_state.scan_interval_bias)))
-            else:
-                scan_interval = 3
-
-            if tick - self._last_scan_tick >= scan_interval:
+            if tick - self._last_scan_tick >= 3:
                 self._last_scan_tick = tick
                 return Action(ActionType.SCAN)
 
-        # Default: idle to conserve power
         return Action(ActionType.IDLE)
 
     def _weakest_critical(self) -> Optional[Component]:

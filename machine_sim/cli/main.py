@@ -42,11 +42,29 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
     engine = SimEngine(cfg, seed=cfg.seed)
     rng = random.Random(cfg.seed)
 
+    # For long-run adaptation, cluster initial units for signal proximity
+    if cfg.long_run_adaptation_enabled and cfg.unit_count > 1:
+        cluster_cx = cfg.grid_width // 2
+        cluster_cy = cfg.grid_height // 2
+        cluster_r = min(15, cfg.grid_width // 6)
+
     for i in range(cfg.unit_count):
         variant = ALL_VARIANTS[i % len(ALL_VARIANTS)] if not cfg.long_run_adaptation_enabled else None
+        if cfg.long_run_adaptation_enabled:
+            # Cluster units in a central region so signals can be observed
+            angle = 2.0 * 3.14159265 * i / cfg.unit_count
+            import math
+            r_offset = rng.uniform(0, cluster_r)
+            px = int(cluster_cx + r_offset * math.cos(angle))
+            py = int(cluster_cy + r_offset * math.sin(angle))
+            px = max(0, min(cfg.grid_width - 1, px))
+            py = max(0, min(cfg.grid_height - 1, py))
+            pos = (px, py)
+        else:
+            pos = (rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1))
         unit = MachineUnitImpl(
             unit_id=f"unit-{i:03d}",
-            position=(rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1)),
+            position=pos,
             variant=variant,
             signal_enabled=cfg.signal_enabled,
             signal_pattern_count=cfg.signal_pattern_count,
@@ -57,8 +75,8 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             adaptive_enabled=cfg.adaptive_enabled,
         )
         if cfg.long_run_adaptation_enabled:
-            unit.max_power = 5000
-            unit.power_reserve = 5000
+            unit.max_power = 10000
+            unit.power_reserve = 10000
         engine.register_unit(unit)
 
     click.echo(f"Starting simulation: {cfg.grid_width}x{cfg.grid_height}, "
@@ -236,8 +254,24 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
     if output:
         outpath = Path(output)
         outpath.mkdir(parents=True, exist_ok=True)
-        (outpath / "state.json").write_text(json.dumps(state.to_dict(), indent=2, default=str))
-        (outpath / "events.json").write_text(engine.event_log.to_json())
+        # Skip massive state/events JSON for long-run mode — judge doesn't need them
+        if not cfg.long_run_adaptation_enabled:
+            (outpath / "state.json").write_text(json.dumps(state.to_dict(), indent=2, default=str))
+            # Stream events to file instead of building one huge JSON string
+            with open(outpath / "events.json", "w") as ef:
+                ef.write("[")
+                first = True
+                for e in engine.event_log.all_events():
+                    if not first:
+                        ef.write(",")
+                    ef.write(json.dumps({
+                        "tick": e.tick,
+                        "event_type": e.event_type.name,
+                        "unit_id": e.unit_id,
+                        "data": e.data,
+                    }, default=str))
+                    first = False
+                ef.write("]")
         if cfg.signal_enabled:
             corr_summary = engine.get_correlation_summary()
             (outpath / "correlation.json").write_text(json.dumps(corr_summary, indent=2))
@@ -284,22 +318,38 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                 for u in engine.units:
                     if hasattr(u, '_adaptive_state'):
                         f.write(json.dumps({"tick": engine.tick_count, "unit_id": u.unit_id, **u._adaptive_state.to_dict()}) + "\n")
-            # Action distribution trace
+            # Action distribution trace (sampled to stay bounded)
             events = engine.event_log.all_events()
             action_events = [e for e in events if e.event_type == EventType.UNIT_ACTION]
+            max_trace_lines = 50000
+            import math
+            step = max(1, math.ceil(len(action_events) / max_trace_lines))
             with open(outpath / "action_distribution_trace.jsonl", "w") as f:
-                for e in action_events:
+                for i in range(0, len(action_events), step):
+                    e = action_events[i]
                     f.write(json.dumps({"tick": e.tick, "unit_id": e.unit_id, "action": e.data.get("action", "unknown")}) + "\n")
             # Unit lifetime trace
             with open(outpath / "unit_lifetime_trace.jsonl", "w") as f:
                 for u in engine.units:
                     f.write(json.dumps({"unit_id": u.unit_id, "active": u.is_active, "power": u.power_reserve, "generation": getattr(u, '_generation_index', 0)}) + "\n")
-            # Run static comparison
+            # Local feedback trace
+            if hasattr(engine, '_local_feedback_trace'):
+                with open(outpath / "local_feedback_trace.jsonl", "w") as f:
+                    for entry in engine._local_feedback_trace:
+                        f.write(json.dumps(entry) + "\n")
+            # Descendant adaptive-state transfer trace
+            if hasattr(engine, '_descendant_transfer_trace'):
+                with open(outpath / "descendant_adaptive_state_trace.jsonl", "w") as f:
+                    for entry in engine._descendant_transfer_trace:
+                        f.write(json.dumps(entry) + "\n")
+            # Run static comparison (same env, same positions, no adaptation)
+            # Use shorter tick count for static comparison to avoid excessive runtime
+            static_ticks = min(cfg.max_ticks, 5000)
             static_cfg = SimConfig(
                 grid_width=cfg.grid_width, grid_height=cfg.grid_height,
                 resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
                 unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
-                max_ticks=cfg.max_ticks, seed=cfg.seed,
+                max_ticks=static_ticks, seed=cfg.seed,
                 signal_enabled=cfg.signal_enabled, adaptive_enabled=False,
                 signal_pattern_count=cfg.signal_pattern_count,
                 signal_energy_cost=cfg.signal_energy_cost,
@@ -307,11 +357,25 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                 signal_default_decay=cfg.signal_default_decay,
                 signal_default_duration=cfg.signal_default_duration,
                 signal_observation_window=cfg.signal_observation_window,
+                fabrication_enabled=False,
+                capsule_enabled=False,
             )
             static_engine = SimEngine(static_cfg, seed=cfg.seed)
+            import math as _math
+            static_rng = random.Random(cfg.seed)
+            static_cx = cfg.grid_width // 2
+            static_cy = cfg.grid_height // 2
+            static_r = min(15, cfg.grid_width // 6)
             for i in range(cfg.unit_count):
+                angle = 2.0 * 3.14159265 * i / cfg.unit_count
+                r_off = static_rng.uniform(0, static_r)
+                spx = int(static_cx + r_off * _math.cos(angle))
+                spy = int(static_cy + r_off * _math.sin(angle))
+                spx = max(0, min(cfg.grid_width - 1, spx))
+                spy = max(0, min(cfg.grid_height - 1, spy))
                 su = MachineUnitImpl(
-                    f"s-{i}", signal_enabled=cfg.signal_enabled, adaptive_enabled=False)
+                    f"s-{i}", position=(spx, spy),
+                    signal_enabled=cfg.signal_enabled, adaptive_enabled=False)
                 su.variant = None
                 su.max_power = 5000
                 su.power_reserve = 5000
@@ -337,7 +401,13 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
 def inspect(output_dir: str) -> None:
     """Inspect a simulation run's output."""
     outpath = Path(output_dir)
-    events = json.loads((outpath / "events.json").read_text())
+    events_path = outpath / "events.json"
+    if not events_path.exists():
+        click.echo("events.json not present (long-run mode). Artifacts available:")
+        for f in sorted(outpath.iterdir()):
+            click.echo(f"  {f.name} ({f.stat().st_size} bytes)")
+        return
+    events = json.loads(events_path.read_text())
     click.echo(f"Total events: {len(events)}")
 
     counts = Counter(e["event_type"] for e in events)

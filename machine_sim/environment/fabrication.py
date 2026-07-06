@@ -66,8 +66,8 @@ class FabricationEngine:
         power_cost: float = 30.0,
         material_cost: float = 5.0,
         variation_factor: float = 0.1,
-        min_power_ratio: float = 0.6,
-        min_component_health: float = 0.4,
+        min_power_ratio: float = 0.4,
+        min_component_health: float = 0.3,
     ) -> None:
         self.population_cap = population_cap
         self.fabrication_interval = fabrication_interval
@@ -109,7 +109,8 @@ class FabricationEngine:
 
         # Cooldown check — fabrication_interval controls attempt frequency
         last_fab_tick = getattr(source_unit, '_last_fabrication_tick', -999)
-        if current_tick - last_fab_tick < self.fabrication_interval:
+        last_attempt_tick = getattr(source_unit, '_last_fabrication_attempt_tick', -999)
+        if current_tick - max(last_fab_tick, last_attempt_tick) < self.fabrication_interval:
             return False, "fabrication_cooldown"
 
         # Material check — look for any resource with sufficient quantity
@@ -153,6 +154,8 @@ class FabricationEngine:
         can_fab, cause = self.can_fabricate(
             source_unit, current_tick, world, current_population
         )
+        # Track attempt tick AFTER cooldown check so next tick sees previous attempt
+        source_unit._last_fabrication_attempt_tick = current_tick
 
         if not can_fab:
             self._fabrication_failures[cause] = \

@@ -41,11 +41,14 @@ class EventLog:
 
     def __init__(self) -> None:
         self._events: List[Event] = []
+        self._tick_events: List[Event] = []
 
     def record(self, event: Event) -> None:
         self._events.append(event)
+        self._tick_events.append(event)
 
     def begin_tick(self, tick: int) -> None:
+        self._tick_events = []
         self.record(Event(tick=tick, event_type=EventType.TICK_BEGIN))
 
     def end_tick(self, tick: int) -> None:
@@ -53,6 +56,10 @@ class EventLog:
 
     def all_events(self) -> List[Event]:
         return list(self._events)
+
+    def current_tick_events(self) -> List[Event]:
+        """Return events from the current tick only (O(1))."""
+        return list(self._tick_events)
 
     def events_for_tick(self, tick: int) -> List[Event]:
         return [e for e in self._events if e.tick == tick]
