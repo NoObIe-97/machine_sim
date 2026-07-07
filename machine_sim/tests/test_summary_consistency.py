@@ -148,7 +148,7 @@ class TestSummaryConsistencyDemo:
                         unit_count=4, resource_density=0.5, hazard_density=0.08,
                         power_drain_rate=0.5,
                         signal_enabled=True, adaptive_enabled=True,
-                        fabrication_enabled=True, population_cap=12,
+                        fabrication_enabled=True, unit_capacity=12,
                         fabrication_interval=25, fabrication_power_cost=30.0,
                         fabrication_material_cost=5.0, fabrication_variation=0.1,
                         capsule_enabled=True, telemetry_enabled=True,
@@ -191,3 +191,4 @@ class TestSummaryConsistencyDemo:
         for section in ["cross_unit", "retention_stability", "compression_convergence",
                         "cross_generation_envelope", "combined"]:
             assert section in result, f"Missing section: {section}"
+

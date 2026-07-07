@@ -98,7 +98,7 @@ class TestPressureDemo:
                             fabrication_enabled=True, capsule_enabled=True,
                             telemetry_enabled=True, reconciliation_enabled=True,
                             lineage_drift_enabled=True, pressure_analysis_enabled=True,
-                            population_cap=10, fabrication_interval=10,
+                            unit_capacity=10, fabrication_interval=10,
                             fabrication_power_cost=10.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=seed)
             for i in range(5):
@@ -120,7 +120,7 @@ class TestPressureDemo:
                         fabrication_enabled=True, capsule_enabled=True,
                         telemetry_enabled=True, reconciliation_enabled=True,
                         lineage_drift_enabled=True, pressure_analysis_enabled=True,
-                        population_cap=10, fabrication_interval=10,
+                        unit_capacity=10, fabrication_interval=10,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(5):
@@ -140,7 +140,7 @@ class TestPressureDemo:
                         fabrication_enabled=True, capsule_enabled=True,
                         telemetry_enabled=True, reconciliation_enabled=True,
                         lineage_drift_enabled=True, pressure_analysis_enabled=True,
-                        population_cap=10, fabrication_interval=10,
+                        unit_capacity=10, fabrication_interval=10,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(5):
@@ -160,7 +160,7 @@ class TestPressureDemo:
                         fabrication_enabled=True, capsule_enabled=True,
                         telemetry_enabled=True, reconciliation_enabled=True,
                         lineage_drift_enabled=True, pressure_analysis_enabled=True,
-                        population_cap=10, fabrication_interval=10,
+                        unit_capacity=10, fabrication_interval=10,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(5):
@@ -198,7 +198,7 @@ class TestPressureDemo:
                         fabrication_enabled=True, capsule_enabled=True,
                         telemetry_enabled=True, reconciliation_enabled=True,
                         lineage_drift_enabled=True, pressure_analysis_enabled=True,
-                        population_cap=10, fabrication_interval=10,
+                        unit_capacity=10, fabrication_interval=10,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(5):
@@ -215,3 +215,4 @@ class TestPressureDemo:
         assert pressure["avg_load_per_active_unit"] > 0.0
         assert pressure["signal_density"] > 0.0
         assert pressure["field_perturbation_score"] >= 0.0
+

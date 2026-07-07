@@ -344,7 +344,7 @@ class TestDescendantTransferInFabrication:
                         power_drain_rate=0.3, signal_enabled=True, adaptive_enabled=True,
                         fabrication_enabled=True, capsule_enabled=False,
                         fabrication_interval=10, fabrication_power_cost=10.0,
-                        fabrication_material_cost=1.0, population_cap=10,
+                        fabrication_material_cost=1.0, unit_capacity=10,
                         long_run_adaptation_enabled=True)
         engine = SimEngine(cfg, seed=42)
         for i in range(3):
@@ -534,3 +534,4 @@ class TestJudgeFailsNoSignalObs:
                 json.dumps(field))
             result = judge(tmpdir)
             assert result["checks"]["signal_adaptation_check"] == "FAIL"
+

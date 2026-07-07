@@ -1,4 +1,4 @@
-# Milestone 14A Final Review Package
+# Milestone 15 Final Review Package
 
 ## Commit History
 
@@ -48,10 +48,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-267 passed in 32.81s
+284 passed in 27.84s
 
 ## Coverage (Final)
-87.06%
+85.46%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -59,7 +59,10 @@ All guardrail checks passed.
 ## M14 Judge Result
 M14_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
-## Full M1-M14 Regression Summary
+## M15 Judge Result
+M15_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+
+## Full M1-M15 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -76,31 +79,34 @@ M14_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 | M11 | raw=100, compressed=20, ratio=0.200 |
 | M12 | generations=100, capsule_compat=0.985 |
 | M13 | consistency=0.961, combined_stability=0.925 |
-| M14A | 20000 ticks, 120x120, 2/6 adaptive active, 6/6 static, 11351 emissions, 7266 observations, 2 fabrications, 12/12 judge PASS |
+| M14A | 20000 ticks, 120x120, 2/6 adaptive active, 11351 emissions, 7266 observations, 12/12 judge PASS |
+| M15 | 30000 ticks, 120x120, 5 transfers, gen span 4, 33137 emissions, 26616 observations, 12/12 judge PASS |
 
-## M14A Demo Output
+## M15 Demo Output
 
 ```
-20000 ticks, 120x120 grid, 6 units, seed=42
-Active units: 2/6 (adaptive), 6/6 (static)
-Signal emissions: 11351, observations: 7266
-Fabrication: 2 successes, 2 descendant transfers
+30000 ticks, 120x120 grid, 6 units, seed=42
+Active units: 7 (6 initial + 5 fabricated)
+Signal emissions: 33137, observations: 26616
+Fabrication: 5 successes, 5 descendant transfers
+Generations: {1: 2, 2: 2, 3: 1}, span: 4
 Judge: 12/12 PASS, 0 SKIP
-Coverage: 87.06%, 267 tests
+Coverage: 85.46%, 284 tests
 ```
 
 ## Artifact Paths
-- `output/demo_m14/long_run_adaptation_summary.json`
-- `output/demo_m14/unit_adaptive_state_trace.jsonl`
-- `output/demo_m14/action_distribution_trace.jsonl`
-- `output/demo_m14/unit_lifetime_trace.jsonl`
-- `output/demo_m14/local_feedback_trace.jsonl`
-- `output/demo_m14/descendant_adaptive_state_trace.jsonl`
-- `output/demo_m14/adaptive_vs_static_compare.json`
-- `output/demo_m14/resource_hazard_field_summary.json`
-- `output/demo_m14/milestone_14_judge_result.json`
+- `output/demo_m15/adaptive_trajectory_summary.json`
+- `output/demo_m15/generation_adaptive_state_trace.jsonl`
+- `output/demo_m15/adaptive_transfer_compare.json`
+- `output/demo_m15/unit_adaptive_state_trace.jsonl`
+- `output/demo_m15/action_distribution_trace.jsonl`
+- `output/demo_m15/local_feedback_trace.jsonl`
+- `output/demo_m15/descendant_adaptive_state_trace.jsonl`
+- `output/demo_m15/resource_hazard_field_summary.json`
+- `output/demo_m15/milestone_15_judge_result.json`
 
 ## Report Paths
+- `docs/milestone_15_report.md`
 - `docs/milestone_14_report.md`
 - `docs/milestone_13_report.md`
 - `docs/milestone_12_report.md`

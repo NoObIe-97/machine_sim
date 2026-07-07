@@ -77,6 +77,10 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
         if cfg.long_run_adaptation_enabled:
             unit.max_power = 10000
             unit.power_reserve = 10000
+        # Scale component degradation rates if configured
+        if cfg.component_degradation_scale != 1.0:
+            for comp in unit.components.values():
+                comp.degradation_rate *= cfg.component_degradation_scale
         engine.register_unit(unit)
 
     click.echo(f"Starting simulation: {cfg.grid_width}x{cfg.grid_height}, "
@@ -344,7 +348,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                         f.write(json.dumps(entry) + "\n")
             # Run static comparison (same env, same positions, no adaptation)
             # Use shorter tick count for static comparison to avoid excessive runtime
-            static_ticks = min(cfg.max_ticks, 5000)
+            static_ticks = min(cfg.max_ticks, 500)
             static_cfg = SimConfig(
                 grid_width=cfg.grid_width, grid_height=cfg.grid_height,
                 resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
@@ -393,6 +397,121 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             (outpath / "resource_hazard_field_summary.json").write_text(json.dumps(field_summary, indent=2))
             click.echo(f"Adaptive run: active={lr_summary.get('final_active_unit_count', 0)}")
             click.echo(f"Static run: active={static_summary.get('final_active_unit_count', 0)}")
+        # M15 multi-generation trace artifacts
+        if cfg.multi_generation_trace_enabled and hasattr(engine, 'multi_gen_trace'):
+            mg = engine.multi_gen_trace
+            # Generation-indexed transfer trace
+            records = mg.get_records()
+            with open(outpath / "generation_adaptive_state_trace.jsonl", "w") as f:
+                for rec in records:
+                    entry = {
+                        "tick": rec.tick,
+                        "source_unit_id": rec.source_unit_id,
+                        "successor_unit_id": rec.successor_unit_id,
+                        "source_generation_index": rec.source_generation_index,
+                        "successor_generation_index": rec.successor_generation_index,
+                        "source_adaptive_state_summary": {k: round(v, 4) for k, v in rec.source_adaptive_state.items()},
+                        "successor_adaptive_state_summary": {k: round(v, 4) for k, v in rec.successor_adaptive_state.items()},
+                        "adaptive_state_delta": {k: round(v, 6) for k, v in rec.adaptive_state_delta.items()},
+                        "transfer_variation_summary": rec.transfer_variation_summary,
+                        "source_lifetime_ticks_at_transfer": rec.source_lifetime_ticks,
+                        "successor_initial_power_ratio": round(rec.successor_initial_power_ratio, 4),
+                        "local_feedback_context_summary": rec.local_feedback_context,
+                    }
+                    f.write(json.dumps(entry) + "\n")
+            # Adaptive trajectory comparison
+            trajectory = mg.get_trajectory_comparison()
+            (outpath / "adaptive_trajectory_summary.json").write_text(json.dumps({
+                "run_parameters": {
+                    "grid_width": cfg.grid_width,
+                    "grid_height": cfg.grid_height,
+                    "unit_count": cfg.unit_count,
+                    "max_ticks": cfg.max_ticks,
+                    "seed": cfg.seed,
+                    "fabrication_enabled": cfg.fabrication_enabled,
+                    "unit_capacity": cfg.unit_capacity,
+                    "fabrication_interval": cfg.fabrication_interval,
+                    "fabrication_min_power_ratio": cfg.fabrication_min_power_ratio,
+                    "fabrication_min_component_health": cfg.fabrication_min_component_health,
+                },
+                "transfer_summary": mg.get_trajectory_summary(),
+                "generation_summary": {
+                    "generation_index_span": trajectory["generation_index_span"],
+                    "transfer_count": trajectory["transfer_count"],
+                },
+                "adaptive_state_delta_summary": trajectory["avg_transfer_delta"],
+                "trajectory_continuity_summary": {
+                    "score": trajectory["trajectory_continuity_score"],
+                },
+                "signal_adaptation_summary": trajectory["signal_parameter_drift_summary"],
+                "resource_hazard_response_summary": {
+                    "resource_drift": trajectory["resource_response_drift_summary"],
+                    "hazard_drift": trajectory["hazard_response_drift_summary"],
+                },
+                "late_run_survival_summary": {
+                    "final_active_count": lr_summary.get("final_active_unit_count", 0) if cfg.long_run_adaptation_enabled else 0,
+                },
+                "artifact_size_summary": {
+                    "transfer_records": len(records),
+                    "generation_index_span": trajectory["generation_index_span"],
+                },
+                "judge_status": "pending",
+            }, indent=2))
+            # Reference comparison: transfer-disabled run
+            ref_cfg = SimConfig(
+                grid_width=cfg.grid_width, grid_height=cfg.grid_height,
+                resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
+                unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
+                max_ticks=min(cfg.max_ticks, 500), seed=cfg.seed,
+                signal_enabled=cfg.signal_enabled, adaptive_enabled=cfg.adaptive_enabled,
+                signal_pattern_count=cfg.signal_pattern_count,
+                signal_energy_cost=cfg.signal_energy_cost,
+                signal_default_radius=cfg.signal_default_radius,
+                signal_default_decay=cfg.signal_default_decay,
+                signal_default_duration=cfg.signal_default_duration,
+                signal_observation_window=cfg.signal_observation_window,
+                fabrication_enabled=True,
+                capsule_enabled=False,
+                unit_capacity=cfg.unit_capacity,
+                fabrication_interval=cfg.fabrication_interval,
+                fabrication_power_cost=cfg.fabrication_power_cost,
+                fabrication_material_cost=cfg.fabrication_material_cost,
+                fabrication_variation=cfg.fabrication_variation,
+                fabrication_min_power_ratio=cfg.fabrication_min_power_ratio,
+                fabrication_min_component_health=cfg.fabrication_min_component_health,
+                long_run_adaptation_enabled=False,
+                multi_generation_trace_enabled=True,
+            )
+            ref_engine = SimEngine(ref_cfg, seed=cfg.seed)
+            ref_rng = random.Random(cfg.seed)
+            ref_cx = cfg.grid_width // 2
+            ref_cy = cfg.grid_height // 2
+            ref_r = min(15, cfg.grid_width // 6)
+            import math as _m2
+            for i in range(cfg.unit_count):
+                angle = 2.0 * 3.14159265 * i / cfg.unit_count
+                r_off = ref_rng.uniform(0, ref_r)
+                rpx = int(ref_cx + r_off * _m2.cos(angle))
+                rpy = int(ref_cy + r_off * _m2.sin(angle))
+                rpx = max(0, min(cfg.grid_width - 1, rpx))
+                rpy = max(0, min(cfg.grid_height - 1, rpy))
+                ru = MachineUnitImpl(
+                    f"r-{i}", position=(rpx, rpy),
+                    signal_enabled=cfg.signal_enabled, adaptive_enabled=cfg.adaptive_enabled)
+                ru.max_power = 10000
+                ru.power_reserve = 10000
+                ref_engine.register_unit(ru)
+            ref_engine.run()
+            ref_records = ref_engine.multi_gen_trace.get_records()
+            ref_active = sum(1 for u in ref_engine.units if u.is_active)
+            comparison_data = mg.get_comparison_with_reference(ref_records)
+            comparison_data["late_active_delta"] = (
+                lr_summary.get("final_active_unit_count", 0) - ref_active
+                if cfg.long_run_adaptation_enabled else 0
+            )
+            (outpath / "adaptive_transfer_compare.json").write_text(json.dumps(comparison_data, indent=2))
+            click.echo(f"M15 transfers: {len(records)}, ref transfers: {len(ref_records)}")
+            click.echo(f"M15 generation span: {trajectory['generation_index_span']}")
         click.echo(f"Output written to {outpath}")
 
 

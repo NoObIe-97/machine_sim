@@ -204,7 +204,7 @@ class TestTelemetryDemo:
                             fabrication_enabled=True, capsule_enabled=True,
                             telemetry_enabled=True, reconciliation_enabled=True,
                             lineage_drift_enabled=True,
-                            population_cap=10, fabrication_interval=8,
+                            unit_capacity=10, fabrication_interval=8,
                             fabrication_power_cost=10.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=seed)
             for i in range(3):
@@ -226,7 +226,7 @@ class TestTelemetryDemo:
                         fabrication_enabled=True, capsule_enabled=True,
                         telemetry_enabled=True, reconciliation_enabled=True,
                         lineage_drift_enabled=True,
-                        population_cap=12, fabrication_interval=8,
+                        unit_capacity=12, fabrication_interval=8,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(3):
@@ -241,3 +241,4 @@ class TestTelemetryDemo:
         assert telemetry["units_tracked"] > 0, "Should track multiple units"
         assert reconciliation["total_records"] > 0, "Should have reconciliation records"
         assert drift["total_entries"] > 0, "Should have lineage drift entries"
+

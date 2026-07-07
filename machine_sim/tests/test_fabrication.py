@@ -162,7 +162,7 @@ class TestFabricationEngine:
             cfg = SimConfig(grid_width=10, grid_height=10, max_ticks=50, seed=seed,
                             unit_count=3, resource_density=0.3, hazard_density=0.0,
                             signal_enabled=True, fabrication_enabled=True,
-                            population_cap=10, fabrication_interval=10,
+                            unit_capacity=10, fabrication_interval=10,
                             fabrication_power_cost=15.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=seed)
             for i in range(3):
@@ -229,7 +229,7 @@ class TestFabricationDemo:
             cfg = SimConfig(grid_width=15, grid_height=15, max_ticks=100, seed=seed,
                             unit_count=4, resource_density=0.3, hazard_density=0.05,
                             signal_enabled=True, adaptive_enabled=True,
-                            fabrication_enabled=True, population_cap=10,
+                            fabrication_enabled=True, unit_capacity=10,
                             fabrication_interval=15, fabrication_power_cost=20.0,
                             fabrication_material_cost=3.0)
             engine = SimEngine(cfg, seed=seed)
@@ -332,7 +332,7 @@ class TestFabricationDemo:
         cfg = SimConfig(grid_width=20, grid_height=20, max_ticks=200, seed=42,
                         unit_count=3, resource_density=0.5, hazard_density=0.01,
                         power_drain_rate=0.4,
-                        fabrication_enabled=True, population_cap=12,
+                        fabrication_enabled=True, unit_capacity=12,
                         fabrication_interval=8, fabrication_power_cost=10.0,
                         fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
@@ -361,3 +361,4 @@ class TestFabricationDemo:
         # Verify generation indices are correct
         for record in summary["lineage"]:
             assert record["successor_gen"] == record["source_gen"] + 1
+

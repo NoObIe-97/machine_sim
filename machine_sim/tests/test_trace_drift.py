@@ -173,7 +173,7 @@ class TestTraceDriftDemo:
                             unit_count=3, resource_density=0.5, hazard_density=0.08,
                             power_drain_rate=0.5,
                             signal_enabled=True, adaptive_enabled=True,
-                            fabrication_enabled=True, population_cap=12,
+                            fabrication_enabled=True, unit_capacity=12,
                             fabrication_interval=25, fabrication_power_cost=30.0,
                             fabrication_material_cost=5.0, fabrication_variation=0.1,
                             capsule_enabled=True, telemetry_enabled=True,
@@ -197,7 +197,7 @@ class TestTraceDriftDemo:
                         unit_count=3, resource_density=0.5, hazard_density=0.08,
                         power_drain_rate=0.5,
                         signal_enabled=True, adaptive_enabled=True,
-                        fabrication_enabled=True, population_cap=12,
+                        fabrication_enabled=True, unit_capacity=12,
                         fabrication_interval=25, fabrication_power_cost=30.0,
                         fabrication_material_cost=5.0, fabrication_variation=0.1,
                         capsule_enabled=True, telemetry_enabled=True,
@@ -222,7 +222,7 @@ class TestTraceDriftDemo:
                         unit_count=3, resource_density=0.5, hazard_density=0.08,
                         power_drain_rate=0.5,
                         signal_enabled=True, adaptive_enabled=True,
-                        fabrication_enabled=True, population_cap=12,
+                        fabrication_enabled=True, unit_capacity=12,
                         fabrication_interval=25, fabrication_power_cost=30.0,
                         fabrication_material_cost=5.0, fabrication_variation=0.1,
                         capsule_enabled=True, telemetry_enabled=True,
@@ -245,7 +245,7 @@ class TestTraceDriftDemo:
                         unit_count=3, resource_density=0.5, hazard_density=0.08,
                         power_drain_rate=0.5,
                         signal_enabled=True, adaptive_enabled=True,
-                        fabrication_enabled=True, population_cap=12,
+                        fabrication_enabled=True, unit_capacity=12,
                         fabrication_interval=25, fabrication_power_cost=30.0,
                         fabrication_material_cost=5.0, fabrication_variation=0.1,
                         capsule_enabled=True, telemetry_enabled=True,
@@ -260,3 +260,4 @@ class TestTraceDriftDemo:
         result = engine.get_trace_drift_summary()
         for section in ["generation", "drift_envelope", "replay_stability", "capsule_trace", "retention"]:
             assert section in result, f"Missing section: {section}"
+

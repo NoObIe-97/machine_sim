@@ -56,7 +56,7 @@ def test_cli_long_run_adaptation(runner):
             "adaptive_enabled = true\nfabrication_enabled = true\n"
             "capsule_enabled = false\nfabrication_interval = 5\n"
             "fabrication_power_cost = 5.0\nfabrication_material_cost = 1.0\n"
-            "fabrication_variation = 0.08\npopulation_cap = 10\n"
+            "fabrication_variation = 0.08\nunit_capacity = 10\n"
             "telemetry_enabled = true\nreconciliation_enabled = false\n"
             "lineage_drift_enabled = false\npressure_analysis_enabled = false\n"
             "signal_dynamics_enabled = false\ntrace_compression_enabled = false\n"

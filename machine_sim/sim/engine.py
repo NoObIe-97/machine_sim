@@ -13,6 +13,7 @@ from machine_sim.analysis.telemetry import LineageDriftAnalyzer, ReconciliationE
 from machine_sim.analysis.trace_compression import TraceCompressor
 from machine_sim.analysis.trace_drift import TraceDriftAnalyzer
 from machine_sim.analysis.summary_consistency import SummaryConsistencyAnalyzer
+from machine_sim.analysis.multi_generation_trace import MultiGenerationTraceAnalyzer
 from machine_sim.environment.calibration import CapsuleManager
 from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
 from machine_sim.environment.world import World
@@ -47,11 +48,13 @@ class SimEngine:
             observation_window=config.signal_observation_window
         )
         self.fabrication_engine = FabricationEngine(
-            population_cap=config.population_cap,
+            population_cap=config.unit_capacity,
             fabrication_interval=config.fabrication_interval,
             power_cost=config.fabrication_power_cost,
             material_cost=config.fabrication_material_cost,
             variation_factor=config.fabrication_variation,
+            min_power_ratio=config.fabrication_min_power_ratio,
+            min_component_health=config.fabrication_min_component_health,
         )
         self.capsule_manager = CapsuleManager(enabled=config.capsule_enabled)
         self.telemetry_tracker = TelemetryTracker(enabled=config.telemetry_enabled)
@@ -66,6 +69,7 @@ class SimEngine:
         self.trace_compressor = TraceCompressor(enabled=config.trace_compression_enabled)
         self.trace_drift = TraceDriftAnalyzer(enabled=config.trace_drift_enabled)
         self.summary_consistency = SummaryConsistencyAnalyzer(enabled=config.summary_consistency_enabled)
+        self.multi_gen_trace = MultiGenerationTraceAnalyzer(enabled=config.multi_generation_trace_enabled)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -252,6 +256,11 @@ class SimEngine:
                         successor.SENSOR_RANGE = tmpl.sensor_range
                         successor._generation_index = getattr(unit, '_generation_index', 0) + 1
 
+                        # Scale component degradation rates for successor
+                        if self.config.component_degradation_scale != 1.0:
+                            for comp in successor.components.values():
+                                comp.degradation_rate *= self.config.component_degradation_scale
+
                         # Generate and apply calibration capsule
                         if self.capsule_manager.enabled:
                             capsule = self.capsule_manager.generate_and_store(
@@ -286,6 +295,19 @@ class SimEngine:
                                     "successor_adaptive_summary": {k: round(v, 4) for k, v in succ_d.items()},
                                     "bounded_delta_summary": {k: round(v, 4) for k, v in delta.items()},
                                 })
+                            # Record generation-indexed transfer trace
+                            if self.config.long_run_adaptation_enabled and self.config.multi_generation_trace_enabled:
+                                self.multi_gen_trace.record_transfer(
+                                    tick=self.tick_count,
+                                    source_unit_id=unit.unit_id,
+                                    successor_unit_id=result.successor_id,
+                                    source_generation_index=getattr(unit, '_generation_index', 0),
+                                    successor_generation_index=successor._generation_index,
+                                    source_adaptive_state=unit._adaptive_state.to_dict(),
+                                    successor_adaptive_state=successor_state.to_dict(),
+                                    source_lifetime_ticks=self.tick_count,
+                                    successor_initial_power_ratio=successor._power_ratio(),
+                                )
 
                         new_units.append(successor)
                         self._record_event(Event(

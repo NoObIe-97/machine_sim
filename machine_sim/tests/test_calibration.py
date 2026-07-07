@@ -152,7 +152,7 @@ class TestCalibrationDemo:
                             unit_count=3, resource_density=0.5, hazard_density=0.01,
                             power_drain_rate=0.4,
                             fabrication_enabled=True, capsule_enabled=True,
-                            population_cap=10, fabrication_interval=8,
+                            unit_capacity=10, fabrication_interval=8,
                             fabrication_power_cost=10.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=seed)
             for i in range(3):
@@ -172,7 +172,7 @@ class TestCalibrationDemo:
                         unit_count=3, resource_density=0.5, hazard_density=0.01,
                         power_drain_rate=0.4,
                         fabrication_enabled=True, capsule_enabled=True,
-                        population_cap=12, fabrication_interval=8,
+                        unit_capacity=12, fabrication_interval=8,
                         fabrication_power_cost=10.0, fabrication_material_cost=2.0)
         engine = SimEngine(cfg, seed=42)
         for i in range(3):
@@ -213,7 +213,7 @@ class TestCapsuleImpact:
                             unit_count=3, resource_density=0.5, hazard_density=0.01,
                             power_drain_rate=0.4,
                             fabrication_enabled=True, capsule_enabled=cap_enabled,
-                            population_cap=10, fabrication_interval=8,
+                            unit_capacity=10, fabrication_interval=8,
                             fabrication_power_cost=10.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=42)
             for i in range(3):
@@ -307,7 +307,7 @@ class TestCapsuleImpact:
                             unit_count=2, resource_density=0.5, hazard_density=0.0,
                             power_drain_rate=0.4,
                             fabrication_enabled=True, capsule_enabled=True,
-                            population_cap=8, fabrication_interval=5,
+                            unit_capacity=8, fabrication_interval=5,
                             fabrication_power_cost=10.0, fabrication_material_cost=2.0)
             engine = SimEngine(cfg, seed=seed)
             for i in range(2):
@@ -319,3 +319,4 @@ class TestCapsuleImpact:
         r1 = run_comparison(42)
         r2 = run_comparison(42)
         assert r1 == r2
+

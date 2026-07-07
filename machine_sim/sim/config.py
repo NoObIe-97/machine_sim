@@ -29,11 +29,13 @@ class SimConfig:
     signal_observation_window: int = 10
     adaptive_enabled: bool = False
     fabrication_enabled: bool = False
-    population_cap: int = 20
+    unit_capacity: int = 20
     fabrication_interval: int = 25
     fabrication_power_cost: float = 30.0
     fabrication_material_cost: float = 5.0
     fabrication_variation: float = 0.1
+    fabrication_min_power_ratio: float = 0.4
+    fabrication_min_component_health: float = 0.3
     capsule_enabled: bool = False
     telemetry_enabled: bool = False
     reconciliation_enabled: bool = False
@@ -46,6 +48,8 @@ class SimConfig:
     trace_drift_enabled: bool = False
     summary_consistency_enabled: bool = False
     long_run_adaptation_enabled: bool = False
+    multi_generation_trace_enabled: bool = False
+    component_degradation_scale: float = 1.0
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

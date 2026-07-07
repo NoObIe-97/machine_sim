@@ -60,12 +60,15 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "signal_enabled", "signal_pattern_count", "signal_energy_cost",
     "signal_default_radius", "signal_default_decay", "signal_default_duration",
     "signal_observation_window", "adaptive_enabled",
-    "fabrication_enabled", "population_cap", "fabrication_interval",
+    "fabrication_enabled", "unit_capacity", "fabrication_interval",
     "fabrication_power_cost", "fabrication_material_cost", "fabrication_variation",
+    "fabrication_min_power_ratio", "fabrication_min_component_health",
     "capsule_enabled", "telemetry_enabled", "reconciliation_enabled",
     "reconciliation_interval", "reconciliation_radius", "lineage_drift_enabled",
     "pressure_analysis_enabled", "signal_dynamics_enabled", "trace_compression_enabled",
     "trace_drift_enabled", "summary_consistency_enabled", "long_run_adaptation_enabled",
+    "multi_generation_trace_enabled",
+    "component_degradation_scale",
 }
 
 # Allowed memory event_type labels
