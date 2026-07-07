@@ -162,7 +162,7 @@ python -m machine_sim.verification.milestone_14_judge output/demo_m14
 ## Known Limitations
 
 1. Component degradation scale (0.2) is tuned to allow enough fabrication for trajectory study — real machines may degrade faster
-2. Population capacity (40) is high to enable deep generation chains — constrained environments would show fewer generations
+2. Unit capacity (40) is high to enable deeper generation-indexed paths — constrained capacity settings would show fewer generation-indexed transfer records
 3. Static comparison uses 500 ticks (shorter than main run) for performance — adequate for distribution comparison but not lifetime-matched
 
 ## Next Recommended Milestone
