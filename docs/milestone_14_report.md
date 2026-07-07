@@ -116,9 +116,41 @@ TOTAL    1932    250    87%
 Required test coverage of 80.0% reached. Total coverage: 87.06%
 ```
 
-## Full M1-M14 Regression Summary
+## Commands Run
 
-Run with: `python -m pytest machine_sim/tests/ -v`
+```bash
+python -m pytest machine_sim/tests/ -v
+python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
+python -m machine_sim.cli.main check
+python -m machine_sim.cli.main run -c configs/milestone_14_long_run_adaptation.toml -t 20000 -s 42 -o output/demo_m14
+python -m machine_sim.cli.main inspect output/demo_m14
+python -m machine_sim.verification.milestone_14_judge output/demo_m14
+```
+
+Full M1-M14 regression:
+
+```bash
+python -m pytest machine_sim/tests/ -v
+python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
+python -m machine_sim.cli.main check
+python -m machine_sim.cli.main run -c configs/milestone_1.toml -t 500 -s 42 -o output/demo_m1
+python -m machine_sim.cli.main run -c configs/milestone_2.toml -t 100 -s 42 -o output/demo_m2
+python -m machine_sim.cli.main run -c configs/milestone_3.toml -t 200 -s 42 -o output/demo_m3
+python -m machine_sim.cli.main run -c configs/milestone_4.toml -t 200 -s 42 -o output/demo_m4
+python -m machine_sim.cli.main compare -c configs/milestone_5_adaptive.toml -t 200 -s 42
+python -m machine_sim.cli.main run -c configs/milestone_6.toml -t 200 -s 42 -o output/demo_m6
+python -m machine_sim.cli.main capsule-compare -c configs/milestone_7_calibration_capsules.toml -t 200 -s 42
+python -m machine_sim.cli.main run -c configs/milestone_8.toml -t 200 -s 42 -o output/demo_m8
+python -m machine_sim.cli.main run -c configs/milestone_9.toml -t 200 -s 42 -o output/demo_m9
+python -m machine_sim.cli.main run -c configs/milestone_10.toml -t 200 -s 42 -o output/demo_m10
+python -m machine_sim.cli.main run -c configs/milestone_11.toml -t 200 -s 42 -o output/demo_m11
+python -m machine_sim.cli.main run -c configs/milestone_12.toml -t 200 -s 42 -o output/demo_m12
+python -m machine_sim.cli.main run -c configs/milestone_13.toml -t 200 -s 42 -o output/demo_m13
+python -m machine_sim.cli.main run -c configs/milestone_14_long_run_adaptation.toml -t 20000 -s 42 -o output/demo_m14
+python -m machine_sim.verification.milestone_14_judge output/demo_m14
+```
+
+## Full M1-M14 Regression Summary
 
 ```
 267 passed in 32.81s

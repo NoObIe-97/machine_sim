@@ -39,6 +39,7 @@
 - `e9c0a87` — Milestone 13 compressed summary cross-unit consistency
 - `760dd11` — Milestone 14 initial long-run adaptive control
 - `fa8fbb8` — Milestone 14A goal-spec hardening
+- `bb875d9` — Milestone 14A stage-closing documentation and final remote state
 
 ## Branch Name
 `feature/milestone-1`
