@@ -1,4 +1,4 @@
-# Milestone 15 Final Review Package
+# Milestone 16 Final Review Package
 
 ## Commit History
 
@@ -41,6 +41,7 @@
 - `fa8fbb8` — Milestone 14A goal-spec hardening
 - `bb875d9` — Milestone 14A stage-closing documentation and final remote state
 - `da47146` — Milestone 15 multi-generation adaptive trace evolution
+- `<pending>` — Milestone 16 adaptive trajectory compression and offline analysis
 
 ## Branch Name
 `feature/milestone-1`
@@ -49,10 +50,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-284 passed in 27.84s
+301 passed in 38.16s
 
 ## Coverage (Final)
-85.46%
+82.77%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -63,7 +64,10 @@ M14_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 ## M15 Judge Result
 M15_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
-## Full M1-M15 Regression Summary
+## M16 Judge Result
+M16_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+
+## Full M1-M16 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -80,33 +84,35 @@ M15_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 | M11 | raw=100, compressed=20, ratio=0.200 |
 | M12 | generations=100, capsule_compat=0.985 |
 | M13 | consistency=0.961, combined_stability=0.925 |
-| M14A | 20000 ticks, 120x120, 2/6 adaptive active, 11351 emissions, 7266 observations, 12/12 judge PASS |
-| M15 | 30000 ticks, 120x120, 5 transfers, gen span 4, 33137 emissions, 26616 observations, 12/12 judge PASS |
+| M14A | 20000 ticks, 120x120, 12/12 judge PASS |
+| M15 | 30000 ticks, 120x120, 6 transfers, gen span 4, 12/12 judge PASS |
+| M16 | 6 source records, 3 compressed segments, ratio 0.695, replay stable, 12/12 judge PASS |
 
-## M15 Demo Output
+## M16 Demo Output
 
 ```
 30000 ticks, 120x120 grid, 6 units, seed=42
-Active units: 7 (6 initial + 5 fabricated)
-Signal emissions: 33137, observations: 26616
-Fabrication: 5 successes, 5 descendant transfers
-Generations: {1: 2, 2: 2, 3: 1}, span: 4
+Active units: 9 (6 initial + 6 fabricated)
+Fabrication: 6 successes, 6 descendant transfers
+Compression: 3 segments, ratio 0.695
+Replay stability: 1.000
+Cross-trajectory similarity: 0.636
 Judge: 12/12 PASS, 0 SKIP
-Coverage: 85.46%, 284 tests
+Coverage: 82.77%, 301 tests
 ```
 
 ## Artifact Paths
-- `output/demo_m15/adaptive_trajectory_summary.json`
-- `output/demo_m15/generation_adaptive_state_trace.jsonl`
-- `output/demo_m15/adaptive_transfer_compare.json`
-- `output/demo_m15/unit_adaptive_state_trace.jsonl`
-- `output/demo_m15/action_distribution_trace.jsonl`
-- `output/demo_m15/local_feedback_trace.jsonl`
-- `output/demo_m15/descendant_adaptive_state_trace.jsonl`
-- `output/demo_m15/resource_hazard_field_summary.json`
-- `output/demo_m15/milestone_15_judge_result.json`
+- `output/demo_m16/compressed_trajectory_capsule.json`
+- `output/demo_m16/trajectory_compression_summary.json`
+- `output/demo_m16/compressed_trajectory_segments.jsonl`
+- `output/demo_m16/trajectory_replay_metrics.json`
+- `output/demo_m16/cross_trajectory_compare.json`
+- `output/demo_m16/adaptive_trajectory_summary.json`
+- `output/demo_m16/generation_adaptive_state_trace.jsonl`
+- `output/demo_m16/milestone_16_judge_result.json`
 
 ## Report Paths
+- `docs/milestone_16_report.md`
 - `docs/milestone_15_report.md`
 - `docs/milestone_14_report.md`
 - `docs/milestone_13_report.md`

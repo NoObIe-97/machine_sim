@@ -50,6 +50,8 @@ class SimConfig:
     long_run_adaptation_enabled: bool = False
     multi_generation_trace_enabled: bool = False
     component_degradation_scale: float = 1.0
+    trajectory_compression_enabled: bool = False
+    trajectory_compression_max_segments: int = 64
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

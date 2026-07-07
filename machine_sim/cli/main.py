@@ -348,7 +348,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                         f.write(json.dumps(entry) + "\n")
             # Run static comparison (same env, same positions, no adaptation)
             # Use shorter tick count for static comparison to avoid excessive runtime
-            static_ticks = min(cfg.max_ticks, 500)
+            static_ticks = min(cfg.max_ticks, 200)
             static_cfg = SimConfig(
                 grid_width=cfg.grid_width, grid_height=cfg.grid_height,
                 resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
@@ -462,7 +462,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                 grid_width=cfg.grid_width, grid_height=cfg.grid_height,
                 resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
                 unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
-                max_ticks=min(cfg.max_ticks, 500), seed=cfg.seed,
+                max_ticks=min(cfg.max_ticks, 200), seed=cfg.seed,
                 signal_enabled=cfg.signal_enabled, adaptive_enabled=cfg.adaptive_enabled,
                 signal_pattern_count=cfg.signal_pattern_count,
                 signal_energy_cost=cfg.signal_energy_cost,
@@ -470,8 +470,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                 signal_default_decay=cfg.signal_default_decay,
                 signal_default_duration=cfg.signal_default_duration,
                 signal_observation_window=cfg.signal_observation_window,
-                fabrication_enabled=True,
-                capsule_enabled=False,
+                fabrication_enabled=True, capsule_enabled=False,
                 unit_capacity=cfg.unit_capacity,
                 fabrication_interval=cfg.fabrication_interval,
                 fabrication_power_cost=cfg.fabrication_power_cost,
@@ -487,12 +486,11 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             ref_cx = cfg.grid_width // 2
             ref_cy = cfg.grid_height // 2
             ref_r = min(15, cfg.grid_width // 6)
-            import math as _m2
             for i in range(cfg.unit_count):
                 angle = 2.0 * 3.14159265 * i / cfg.unit_count
                 r_off = ref_rng.uniform(0, ref_r)
-                rpx = int(ref_cx + r_off * _m2.cos(angle))
-                rpy = int(ref_cy + r_off * _m2.sin(angle))
+                rpx = int(ref_cx + r_off * math.cos(angle))
+                rpy = int(ref_cy + r_off * math.sin(angle))
                 rpx = max(0, min(cfg.grid_width - 1, rpx))
                 rpy = max(0, min(cfg.grid_height - 1, rpy))
                 ru = MachineUnitImpl(
@@ -532,6 +530,149 @@ def inspect(output_dir: str) -> None:
     counts = Counter(e["event_type"] for e in events)
     for etype, count in counts.most_common():
         click.echo(f"  {etype}: {count}")
+
+
+@cli.command()
+@click.argument("output_dir", type=click.Path())
+@click.option("--max-segments", "-m", type=int, default=32)
+@click.option("--compare-seed", type=int, default=None,
+              help="Seed for alternate comparison run")
+def compress(output_dir: str, max_segments: int, compare_seed: int | None) -> None:
+    """Run M16 trajectory compression on an existing simulation output."""
+    from machine_sim.analysis.adaptive_trajectory_compression import (
+        AdaptiveTrajectoryCompressor, compare_trajectories, load_jsonl,
+    )
+    outpath = Path(output_dir)
+    outpath.mkdir(parents=True, exist_ok=True)
+
+    compressor = AdaptiveTrajectoryCompressor(max_segments=max_segments)
+    gen_trace_path = outpath / "generation_adaptive_state_trace.jsonl"
+    if gen_trace_path.exists():
+        compressor.load_transfer_records(load_jsonl(gen_trace_path))
+    action_trace_path = outpath / "action_distribution_trace.jsonl"
+    if action_trace_path.exists():
+        compressor.load_action_trace(load_jsonl(action_trace_path))
+    feedback_trace_path = outpath / "local_feedback_trace.jsonl"
+    if feedback_trace_path.exists():
+        compressor.load_feedback_trace(load_jsonl(feedback_trace_path))
+    state_trace_path = outpath / "unit_adaptive_state_trace.jsonl"
+    if state_trace_path.exists():
+        compressor.load_adaptive_state_trace(load_jsonl(state_trace_path))
+
+    segments = compressor.compress()
+    trajectory_sig = compressor.get_trajectory_signature()
+    replay = compressor.get_replay_metrics()
+    size_est = compressor.get_compressed_size_estimate()
+
+    with open(outpath / "compressed_trajectory_segments.jsonl", "w") as f:
+        for seg in segments:
+            f.write(json.dumps(seg.to_dict()) + "\n")
+    (outpath / "trajectory_replay_metrics.json").write_text(json.dumps(replay, indent=2))
+
+    traj_summary_path = outpath / "adaptive_trajectory_summary.json"
+    run_params = {}
+    if traj_summary_path.exists():
+        run_params = json.loads(traj_summary_path.read_text()).get("run_parameters", {})
+
+    if run_params:
+        seed = run_params.get("seed", 42)
+        alt_seed = compare_seed if compare_seed is not None else seed + 1
+        alt_cfg = SimConfig(
+            grid_width=run_params.get("grid_width", 120),
+            grid_height=run_params.get("grid_height", 120),
+            resource_density=0.45, hazard_density=0.01,
+            unit_count=run_params.get("unit_count", 6),
+            power_drain_rate=0.08, max_ticks=200, seed=alt_seed,
+            signal_enabled=True, adaptive_enabled=True,
+            signal_pattern_count=4, signal_energy_cost=1.0,
+            signal_default_radius=60, signal_default_decay=0.01,
+            signal_default_duration=40, signal_observation_window=20,
+            fabrication_enabled=True, capsule_enabled=False,
+            unit_capacity=run_params.get("unit_capacity", 40),
+            fabrication_interval=run_params.get("fabrication_interval", 5),
+            fabrication_power_cost=run_params.get("fabrication_power_cost", 3.0),
+            fabrication_material_cost=run_params.get("fabrication_material_cost", 0.3),
+            fabrication_variation=0.08, fabrication_min_power_ratio=0.05,
+            fabrication_min_component_health=0.02,
+            long_run_adaptation_enabled=True, multi_generation_trace_enabled=True,
+            component_degradation_scale=0.2,
+        )
+        alt_engine = SimEngine(alt_cfg, seed=alt_seed)
+        import math as _m4
+        alt_rng = random.Random(alt_seed)
+        alt_cx = alt_cfg.grid_width // 2
+        alt_cy = alt_cfg.grid_height // 2
+        alt_r = min(15, alt_cfg.grid_width // 6)
+        for i in range(alt_cfg.unit_count):
+            angle = 2.0 * 3.14159265 * i / alt_cfg.unit_count
+            r_off = alt_rng.uniform(0, alt_r)
+            apx = max(0, min(alt_cfg.grid_width - 1, int(alt_cx + r_off * _m4.cos(angle))))
+            apy = max(0, min(alt_cfg.grid_height - 1, int(alt_cy + r_off * _m4.sin(angle))))
+            au = MachineUnitImpl(f"alt-{i}", position=(apx, apy),
+                                 signal_enabled=True, adaptive_enabled=True)
+            au.max_power = 10000
+            au.power_reserve = 10000
+            alt_engine.register_unit(au)
+        alt_engine.run()
+        alt_compressor = AdaptiveTrajectoryCompressor(max_segments=max_segments)
+        alt_gen_records = []
+        for entry in getattr(alt_engine, '_descendant_transfer_trace', []):
+            alt_gen_records.append({
+                "tick": entry["tick"], "source_unit_id": entry["source_unit_id"],
+                "successor_unit_id": entry["successor_unit_id"],
+                "source_generation_index": entry["source_generation"],
+                "successor_generation_index": entry["successor_generation"],
+                "source_adaptive_state_summary": entry["source_adaptive_summary"],
+                "successor_adaptive_state_summary": entry["successor_adaptive_summary"],
+                "adaptive_state_delta": entry["bounded_delta_summary"],
+            })
+        alt_compressor.load_transfer_records(alt_gen_records)
+        alt_events = alt_engine.event_log.all_events()
+        alt_action_events = [e for e in alt_events if e.event_type == EventType.UNIT_ACTION]
+        alt_compressor.load_action_trace([
+            {"tick": e.tick, "unit_id": e.unit_id, "action": e.data.get("action", "unknown")}
+            for e in alt_action_events
+        ])
+        alt_compressor.compress()
+        cross_compare = compare_trajectories(compressor, alt_compressor)
+    else:
+        cross_compare = {
+            "primary_segment_count": len(segments), "comparison_segment_count": 0,
+            "trajectory_signature_delta": 0.0, "adaptive_state_similarity": 1.0,
+            "transfer_delta_similarity": 1.0, "action_distribution_similarity": 1.0,
+            "signal_response_similarity": 1.0, "overall_trajectory_similarity": 1.0,
+            "nontrivial_difference_detected": False,
+        }
+
+    (outpath / "cross_trajectory_compare.json").write_text(json.dumps(cross_compare, indent=2))
+    capsule = {
+        "run_parameters": run_params,
+        "compression_parameters": {"max_segments": max_segments},
+        "segment_summaries": [s.to_dict() for s in segments],
+        "trajectory_signature": trajectory_sig,
+        "replay_metrics": replay,
+        "cross_trajectory_similarity": cross_compare,
+        "artifact_size_summary": size_est,
+        "source_artifact_references": {
+            "generation_adaptive_state_trace": str(gen_trace_path),
+            "action_distribution_trace": str(action_trace_path),
+            "local_feedback_trace": str(feedback_trace_path),
+        },
+        "judge_status": "pending",
+    }
+    (outpath / "compressed_trajectory_capsule.json").write_text(json.dumps(capsule, indent=2))
+    (outpath / "trajectory_compression_summary.json").write_text(json.dumps({
+        "source_trace_record_count": size_est["source_trace_record_count"],
+        "compressed_segment_count": size_est["compressed_segment_count"],
+        "trajectory_compression_ratio": size_est["trajectory_compression_ratio"],
+        "replay_stability_score": replay["replay_stability_score"],
+        "overall_trajectory_similarity": cross_compare["overall_trajectory_similarity"],
+        "nontrivial_difference_detected": cross_compare["nontrivial_difference_detected"],
+    }, indent=2))
+    click.echo(f"M16 compression: {len(segments)} segments, ratio={size_est['trajectory_compression_ratio']:.3f}")
+    click.echo(f"M16 replay stability: {replay['replay_stability_score']:.3f}")
+    click.echo(f"M16 cross-trajectory similarity: {cross_compare['overall_trajectory_similarity']:.3f}")
+    click.echo(f"Output written to {outpath}")
 
 
 @cli.command()

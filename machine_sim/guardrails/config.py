@@ -69,6 +69,9 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "trace_drift_enabled", "summary_consistency_enabled", "long_run_adaptation_enabled",
     "multi_generation_trace_enabled",
     "component_degradation_scale",
+    "trajectory_compression_enabled",
+    "trajectory_compression_max_segments",
+    "component_degradation_scale",
 }
 
 # Allowed memory event_type labels
