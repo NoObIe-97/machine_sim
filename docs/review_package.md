@@ -41,7 +41,7 @@
 - `fa8fbb8` — Milestone 14A goal-spec hardening
 - `bb875d9` — Milestone 14A stage-closing documentation and final remote state
 - `da47146` — Milestone 15 multi-generation adaptive trace evolution
-- `<pending>` — Milestone 16 adaptive trajectory compression and offline analysis
+- `5edc31e` — Milestone 16 adaptive trajectory compression and offline analysis
 
 ## Branch Name
 `feature/milestone-1`

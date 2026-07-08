@@ -134,7 +134,7 @@ Required test coverage of 80.0% reached. Total coverage: 82.77%
 python -m pytest machine_sim/tests/ -v
 python -m pytest machine_sim/tests/ --cov=machine_sim --cov-report=term-missing
 python -m machine_sim.cli.main check
-python _run_m16.py
+python -m machine_sim.cli.main run -c configs/milestone_16_adaptive_trajectory_compression.toml -t 30000 -s 42 -o output/demo_m16
 python -m machine_sim.cli.main compress output/demo_m16 --max-segments 32
 python -m machine_sim.verification.milestone_16_judge output/demo_m16
 ```
@@ -164,7 +164,7 @@ python -m machine_sim.verification.milestone_16_judge output/demo_m16
 
 1. Small transfer counts (6 records) limit compression ratio improvement — larger runs would compress better
 2. Cross-trajectory comparison uses a short 200-tick alternate run — longer comparison runs would provide richer signatures
-3. Segment signatures are hash-based, not semantic — two structurally similar but differently-hashed segments appear different
+3. Segment signatures are hash-based, not structural-metric equivalent — two structurally similar but differently-hashed segments appear different
 
 ## Next Recommended Milestone
 
