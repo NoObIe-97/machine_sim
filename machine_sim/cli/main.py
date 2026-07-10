@@ -73,6 +73,10 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             signal_default_decay=cfg.signal_default_decay,
             signal_default_duration=cfg.signal_default_duration,
             adaptive_enabled=cfg.adaptive_enabled,
+            neural_controller_enabled=cfg.neural_controller_enabled,
+            neural_controller_mode=cfg.neural_controller_mode,
+            neural_plasticity_enabled=cfg.neural_plasticity_enabled,
+            neural_seed=cfg.seed,
         )
         if cfg.long_run_adaptation_enabled:
             unit.max_power = 10000
@@ -510,6 +514,112 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             (outpath / "adaptive_transfer_compare.json").write_text(json.dumps(comparison_data, indent=2))
             click.echo(f"M15 transfers: {len(records)}, ref transfers: {len(ref_records)}")
             click.echo(f"M15 generation span: {trajectory['generation_index_span']}")
+
+        # M17 neural processing unit artifacts
+        if cfg.neural_controller_enabled:
+            neural_summary = engine.get_neural_processing_summary()
+            (outpath / "neural_processing_summary.json").write_text(json.dumps(neural_summary, indent=2))
+
+            # Neural state trace
+            with open(outpath / "neural_state_trace.jsonl", "w") as f:
+                for entry in engine._neural_state_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Neural action trace
+            with open(outpath / "neural_action_trace.jsonl", "w") as f:
+                for entry in engine._neural_action_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Neural plasticity trace
+            with open(outpath / "neural_plasticity_trace.jsonl", "w") as f:
+                for entry in engine._neural_plasticity_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Neural successor transfer trace
+            if engine._neural_successor_transfer_trace:
+                with open(outpath / "neural_successor_transfer_trace.jsonl", "w") as f:
+                    for entry in engine._neural_successor_transfer_trace:
+                        f.write(json.dumps(entry) + "\n")
+
+            # Neural controller config snapshot
+            if engine.units and hasattr(engine.units[0], '_neural_controller') and engine.units[0]._neural_controller is not None:
+                nc_cfg = engine.units[0]._neural_controller.config
+                (outpath / "neural_controller_config.json").write_text(json.dumps({
+                    "input_size": nc_cfg.input_size,
+                    "hidden_size": nc_cfg.hidden_size,
+                    "output_size": nc_cfg.output_size,
+                    "param_output_size": nc_cfg.param_output_size,
+                    "plasticity_rate": nc_cfg.plasticity_rate,
+                    "plasticity_enabled": nc_cfg.plasticity_enabled,
+                    "weight_bound": nc_cfg.weight_bound,
+                }, indent=2))
+
+                # Initial parameter snapshot
+                init_state = engine.units[0]._neural_controller._initialize_state(
+                    engine.units[0].unit_id, cfg.seed
+                )
+                (outpath / "neural_parameter_snapshot_initial.json").write_text(json.dumps(init_state.to_dict(), indent=2))
+
+                # Final parameter snapshot
+                (outpath / "neural_parameter_snapshot_final.json").write_text(json.dumps(
+                    engine.units[0]._neural_controller.state.to_dict(), indent=2
+                ))
+
+            # Neural vs scalar comparison
+            if cfg.long_run_adaptation_enabled:
+                scalar_cfg = SimConfig(
+                    grid_width=cfg.grid_width, grid_height=cfg.grid_height,
+                    resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
+                    unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
+                    max_ticks=min(cfg.max_ticks, 200), seed=cfg.seed,
+                    signal_enabled=cfg.signal_enabled, adaptive_enabled=True,
+                    neural_controller_enabled=False,
+                    signal_pattern_count=cfg.signal_pattern_count,
+                    signal_energy_cost=cfg.signal_energy_cost,
+                    signal_default_radius=cfg.signal_default_radius,
+                    signal_default_decay=cfg.signal_default_decay,
+                    signal_default_duration=cfg.signal_default_duration,
+                    signal_observation_window=cfg.signal_observation_window,
+                    fabrication_enabled=False, capsule_enabled=False,
+                )
+                scalar_engine = SimEngine(scalar_cfg, seed=cfg.seed)
+                scalar_rng = random.Random(cfg.seed)
+                scalar_cx = cfg.grid_width // 2
+                scalar_cy = cfg.grid_height // 2
+                scalar_r = min(15, cfg.grid_width // 6)
+                for si in range(cfg.unit_count):
+                    angle_s = 2.0 * 3.14159265 * si / cfg.unit_count
+                    r_off_s = scalar_rng.uniform(0, scalar_r)
+                    spx = int(scalar_cx + r_off_s * math.cos(angle_s))
+                    spy = int(scalar_cy + r_off_s * math.sin(angle_s))
+                    spx = max(0, min(cfg.grid_width - 1, spx))
+                    spy = max(0, min(cfg.grid_height - 1, spy))
+                    su = MachineUnitImpl(
+                        f"sc-{si}", position=(spx, spy),
+                        signal_enabled=cfg.signal_enabled, adaptive_enabled=True,
+                        neural_controller_enabled=False)
+                    su.variant = None
+                    su.max_power = 5000
+                    su.power_reserve = 5000
+                    scalar_engine.register_unit(su)
+                scalar_engine.run()
+                scalar_summary = scalar_engine.get_long_run_adaptation_summary()
+                comparison = engine.get_neural_vs_scalar_comparison(scalar_summary)
+                (outpath / "neural_vs_scalar_compare.json").write_text(json.dumps(comparison, indent=2))
+                click.echo(f"Neural active: {neural_summary['final_active_count']}, Scalar active: {scalar_summary.get('final_active_unit_count', 0)}")
+
+            # Resource/field summary
+            field_summary_m17 = {
+                "total_resource_cells": sum(1 for c in engine.world.grid.values() if c.resources),
+                "total_hazard_cells": sum(1 for c in engine.world.grid.values() if c.hazards),
+                "total_resources": sum(sum(r.quantity for r in c.resources.values()) for c in engine.world.grid.values()),
+            }
+            (outpath / "resource_hazard_field_summary.json").write_text(json.dumps(field_summary_m17, indent=2))
+
+            click.echo(f"Neural state traces: {neural_summary['neural_state_trace_count']}")
+            click.echo(f"Neural plasticity traces: {neural_summary['neural_plasticity_trace_count']}")
+            click.echo(f"Neural successor transfers: {neural_summary['neural_successor_transfer_count']}")
+
         click.echo(f"Output written to {outpath}")
 
 

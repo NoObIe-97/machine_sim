@@ -70,6 +70,12 @@ class SimEngine:
         self.trace_drift = TraceDriftAnalyzer(enabled=config.trace_drift_enabled)
         self.summary_consistency = SummaryConsistencyAnalyzer(enabled=config.summary_consistency_enabled)
         self.multi_gen_trace = MultiGenerationTraceAnalyzer(enabled=config.multi_generation_trace_enabled)
+        # Neural controller trace storage
+        self._neural_state_trace: List[Dict[str, Any]] = []
+        self._neural_action_trace: List[Dict[str, Any]] = []
+        self._neural_plasticity_trace: List[Dict[str, Any]] = []
+        self._neural_successor_transfer_trace: List[Dict[str, Any]] = []
+        self._neural_snapshot_interval = max(1, config.max_ticks // 10)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -250,6 +256,10 @@ class SimEngine:
                             signal_default_decay=tmpl.signal_default_decay,
                             signal_default_duration=tmpl.signal_default_duration,
                             adaptive_enabled=tmpl.adaptive_enabled,
+                            neural_controller_enabled=self.config.neural_controller_enabled,
+                            neural_controller_mode=self.config.neural_controller_mode,
+                            neural_plasticity_enabled=self.config.neural_plasticity_enabled,
+                            neural_seed=self.config.seed,
                         )
                         successor.max_power = tmpl.max_power
                         successor.power_reserve = tmpl.max_power
@@ -308,6 +318,36 @@ class SimEngine:
                                     source_lifetime_ticks=self.tick_count,
                                     successor_initial_power_ratio=successor._power_ratio(),
                                 )
+
+                        # Transfer neural controller state from source to successor
+                        if (self.config.neural_controller_enabled
+                                and hasattr(unit, '_neural_controller')
+                                and unit._neural_controller is not None
+                                and hasattr(successor, '_neural_controller')
+                                and successor._neural_controller is not None):
+                            import random as _nc_rng
+                            nc_rng = _nc_rng.Random(self.tick_count * 7 + hash(unit.unit_id))
+                            source_nc_state = unit._neural_controller.state.copy()
+                            successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
+                            successor._neural_controller.state = successor_nc_state
+                            # Record neural successor transfer trace
+                            if self.config.long_run_adaptation_enabled:
+                                param_delta = unit._neural_controller.get_parameter_delta(successor_nc_state)
+                                self._neural_successor_transfer_trace.append({
+                                    "tick": self.tick_count,
+                                    "source_unit_id": unit.unit_id,
+                                    "successor_unit_id": result.successor_id,
+                                    "source_generation": getattr(unit, '_generation_index', 0),
+                                    "successor_generation": successor._generation_index,
+                                    "source_hidden_summary": {
+                                        "mean": round(sum(source_nc_state.hidden_state) / len(source_nc_state.hidden_state), 6) if source_nc_state.hidden_state else 0.0,
+                                    },
+                                    "successor_hidden_summary": {
+                                        "mean": round(sum(successor_nc_state.hidden_state) / len(successor_nc_state.hidden_state), 6) if successor_nc_state.hidden_state else 0.0,
+                                    },
+                                    "parameter_delta": param_delta,
+                                    "transfer_variation": 0.05,
+                                })
 
                         new_units.append(successor)
                         self._record_event(Event(
@@ -593,6 +633,113 @@ class SimEngine:
                                 **feedback,
                             })
 
+        # Phase 15b: Neural controller feedback update
+        if self.config.neural_controller_enabled:
+            for unit in self.units:
+                if (unit.is_active
+                        and hasattr(unit, '_neural_controller')
+                        and unit._neural_controller is not None):
+                    # Gather local feedback from this tick's events
+                    nc_feedback: Dict[str, float] = {}
+                    nc_power_delta = -self.config.power_drain_rate
+                    for e in self.event_log.current_tick_events():
+                        if e.tick == self.tick_count and e.unit_id == unit.unit_id:
+                            if e.event_type == EventType.HAZARD_ENCOUNTER:
+                                nc_feedback["hazard_exposure"] = 1.0
+                                nc_power_delta -= e.data.get("intensity", 0.0) * 2.0
+                            if e.event_type == EventType.UNIT_ACTION:
+                                act = e.data.get("action", "")
+                                if act == "HARVEST":
+                                    nc_feedback["resource_extracted"] = 1.0
+                                    nc_power_delta += 45.0
+                                elif act == "SCAN":
+                                    nc_feedback["scan_result_count"] = 1.0
+                                elif act == "EMIT_SIGNAL":
+                                    nc_feedback["signal_emitted"] = 1.0
+                                    nc_power_delta -= unit.signal_energy_cost
+                                elif act == "MOVE":
+                                    if not e.data.get("success", True):
+                                        nc_feedback["movement_blocked"] = 1.0
+                            if e.event_type == EventType.SIGNAL_RECEIVED:
+                                nc_feedback["signal_observed"] = 1.0
+
+                    post_power_nc = unit.power_reserve
+                    actual_nc_power_delta = post_power_nc - unit.power_reserve + nc_power_delta
+                    nc_feedback["power_delta"] = actual_nc_power_delta if nc_feedback else 0.0
+
+                    # Build sensor input for the neural controller
+                    readings = list(unit.sensor_readings)
+                    has_resource = False
+                    has_hazard = False
+                    res_str = 0.0
+                    haz_str = 0.0
+                    for r in readings:
+                        if hasattr(r, 'resource_type') and r.resource_quantity > 0:
+                            has_resource = True
+                            res_str = max(res_str, r.resource_quantity)
+                        if hasattr(r, 'hazard_level') and r.hazard_level > 0:
+                            has_hazard = True
+                            haz_str = max(haz_str, r.hazard_level)
+
+                    field_sum_nc = unit._field_tracker.get_summary(self.tick_count)
+                    signal_obs = field_sum_nc.recent_signal_count > 0
+                    signal_emi = field_sum_nc.total_emissions > 0
+                    mov_blk = field_sum_nc.recent_movement_blocks > 0
+                    scan_ct = float(field_sum_nc.total_scans)
+
+                    sensor_input = unit._neural_controller.build_sensor_input(
+                        power_ratio=unit._power_ratio(),
+                        avg_component_health=unit._avg_component_health(),
+                        has_resource=has_resource,
+                        resource_strength=res_str,
+                        has_hazard=has_hazard,
+                        hazard_strength=haz_str,
+                        signal_observed=signal_obs,
+                        signal_emitted=signal_emi,
+                        movement_blocked=mov_blk,
+                        resource_extracted=nc_feedback.get("resource_extracted", 0.0) > 0,
+                        scan_result_count=min(1.0, scan_ct / 5.0),
+                        previous_action=unit._previous_action_name,
+                        time_since_signal=0.0,
+                    )
+
+                    import random as _nc_fb_rng
+                    nc_fb_rng = _nc_fb_rng.Random(self.tick_count * 13 + hash(unit.unit_id))
+                    pre_w_out = [list(row) for row in unit._neural_controller.state.W_out]
+                    unit._neural_controller.update_from_feedback(
+                        sensor_input, unit._previous_action_name, nc_feedback, nc_fb_rng
+                    )
+
+                    # Record neural action trace (sampled to stay bounded)
+                    if (self.config.long_run_adaptation_enabled
+                            and len(self._neural_action_trace) < 45000
+                            and self.tick_count % 3 == 0):
+                        last_out = unit._neural_controller._last_action_output
+                        if last_out:
+                            self._neural_action_trace.append({
+                                "tick": self.tick_count,
+                                "unit_id": unit.unit_id,
+                                "action": last_out.get("action_name", "unknown"),
+                                "action_logits": last_out.get("action_logits", []),
+                                "action_preferences": last_out.get("action_preferences", []),
+                            })
+
+                    # Record plasticity trace if parameters changed
+                    if self.config.long_run_adaptation_enabled:
+                        post_w_out = unit._neural_controller.state.W_out
+                        w_out_delta = sum(
+                            abs(post_w_out[i][j] - pre_w_out[i][j])
+                            for i in range(len(post_w_out))
+                            for j in range(len(post_w_out[i]))
+                        )
+                        if w_out_delta > 1e-8:
+                            self._neural_plasticity_trace.append({
+                                "tick": self.tick_count,
+                                "unit_id": unit.unit_id,
+                                "w_out_delta": round(w_out_delta, 8),
+                                "selected_action": unit._previous_action_name,
+                            })
+
         # Record adaptive state snapshots at intervals for long-run trace
         if self.config.long_run_adaptation_enabled and self.tick_count % self._adaptive_snapshot_interval == 0:
             for unit in self.units:
@@ -602,6 +749,79 @@ class SimEngine:
                         "unit_id": unit.unit_id,
                         **unit._adaptive_state.to_dict(),
                     })
+
+        # Record neural state snapshots at intervals for long-run trace
+        if (self.config.neural_controller_enabled
+                and self.config.long_run_adaptation_enabled
+                and self.tick_count % self._neural_snapshot_interval == 0):
+            for unit in self.units:
+                if (hasattr(unit, '_neural_controller')
+                        and unit._neural_controller is not None):
+                    snap = unit._neural_controller.get_state_snapshot()
+                    self._neural_state_trace.append({
+                        "tick": self.tick_count,
+                        "unit_id": unit.unit_id,
+                        **snap,
+                    })
+
+    def get_neural_processing_summary(self) -> Dict[str, Any]:
+        """Get neural processing summary for artifact output."""
+        cfg = self.config
+        return {
+            "neural_controller_enabled": cfg.neural_controller_enabled,
+            "neural_controller_mode": cfg.neural_controller_mode,
+            "neural_plasticity_enabled": cfg.neural_plasticity_enabled,
+            "neural_state_trace_count": len(self._neural_state_trace),
+            "neural_action_trace_count": len(self._neural_action_trace),
+            "neural_plasticity_trace_count": len(self._neural_plasticity_trace),
+            "neural_successor_transfer_count": len(self._neural_successor_transfer_trace),
+            "final_active_count": sum(1 for u in self.units if u.is_active),
+            "total_unit_count": len(self.units),
+        }
+
+    def get_neural_vs_scalar_comparison(self, scalar_summary: Dict[str, Any]) -> Dict[str, Any]:
+        """Compare neural vs scalar baseline."""
+        neural_active = sum(1 for u in self.units if u.is_active)
+        scalar_active = scalar_summary.get("final_active_unit_count", 0)
+
+        # Action distribution from neural trace
+        neural_actions: Dict[str, int] = {}
+        for entry in self._neural_action_trace:
+            a = entry.get("action", "unknown")
+            neural_actions[a] = neural_actions.get(a, 0) + 1
+
+        # Compute action distribution delta vs scalar
+        scalar_summary.get("action_distribution", {})
+
+        return {
+            "scalar_active_count": scalar_active,
+            "neural_active_count": neural_active,
+            "scalar_transfer_count": scalar_summary.get("transfer_count", 0),
+            "neural_transfer_count": len(self._neural_successor_transfer_trace),
+            "scalar_signal_observations": scalar_summary.get("signal_observation_count", 0),
+            "neural_signal_observations": sum(
+                1 for e in self._neural_action_trace if e.get("action") == "EMIT_SIGNAL"
+            ),
+            "action_distribution_delta": neural_actions,
+            "adaptive_state_delta_scalar": scalar_summary.get("adaptive_state_delta", {}),
+            "neural_state_delta": {
+                "plasticity_events": len(self._neural_plasticity_trace),
+                "total_w_out_delta": round(sum(e.get("w_out_delta", 0) for e in self._neural_plasticity_trace), 6),
+            },
+            "neural_parameter_delta": {
+                "transfer_count": len(self._neural_successor_transfer_trace),
+            },
+            "runtime_metric_delta_summary": {
+                "neural_active": neural_active,
+                "scalar_active": scalar_active,
+                "difference": neural_active - scalar_active,
+            },
+            "nontrivial_neural_difference_detected": (
+                len(self._neural_plasticity_trace) > 0
+                or len(self._neural_successor_transfer_trace) > 0
+                or neural_active != scalar_active
+            ),
+        }
 
     def get_fabrication_summary(self) -> Dict[str, Any]:
         """Get fabrication and lineage summary."""

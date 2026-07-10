@@ -1,4 +1,4 @@
-# Milestone 16 Final Review Package
+# Milestone 17 Final Review Package
 
 ## Commit History
 
@@ -50,7 +50,7 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-301 passed in 38.16s
+332 passed in 35.03s
 
 ## Coverage (Final)
 82.77%
@@ -67,7 +67,10 @@ M15_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 ## M16 Judge Result
 M16_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
-## Full M1-M16 Regression Summary
+## M17 Judge Result
+M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+
+## Full M1-M17 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -87,31 +90,37 @@ M16_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 | M14A | 20000 ticks, 120x120, 12/12 judge PASS |
 | M15 | 30000 ticks, 120x120, 6 transfers, gen span 4, 12/12 judge PASS |
 | M16 | 6 source records, 3 compressed segments, ratio 0.695, replay stable, 12/12 judge PASS |
+| M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 25296 plasticity events, 12/12 judge PASS |
 
-## M16 Demo Output
+## M17 Demo Output
 
 ```
-30000 ticks, 120x120 grid, 6 units, seed=42
-Active units: 9 (6 initial + 6 fabricated)
-Fabrication: 6 successes, 6 descendant transfers
-Compression: 3 segments, ratio 0.695
-Replay stability: 1.000
-Cross-trajectory similarity: 0.636
+20000 ticks, 120x120 grid, 6 initial units, seed=42
+Active units: 7 (6 initial + 1 fabricated)
+Fabrication: 5 successes, 5 neural successor transfers
+Signal: 189 emissions, 16001 observations
+Neural state traces: 110
+Neural plasticity events: 25296
+Neural-vs-scalar: neural 7 active, scalar 6 active
 Judge: 12/12 PASS, 0 SKIP
-Coverage: 82.77%, 301 tests
+Coverage: 82.77%, 332 tests
 ```
 
 ## Artifact Paths
-- `output/demo_m16/compressed_trajectory_capsule.json`
-- `output/demo_m16/trajectory_compression_summary.json`
-- `output/demo_m16/compressed_trajectory_segments.jsonl`
-- `output/demo_m16/trajectory_replay_metrics.json`
-- `output/demo_m16/cross_trajectory_compare.json`
-- `output/demo_m16/adaptive_trajectory_summary.json`
-- `output/demo_m16/generation_adaptive_state_trace.jsonl`
-- `output/demo_m16/milestone_16_judge_result.json`
+- `output/demo_m17/neural_processing_summary.json`
+- `output/demo_m17/neural_state_trace.jsonl`
+- `output/demo_m17/neural_action_trace.jsonl`
+- `output/demo_m17/neural_plasticity_trace.jsonl`
+- `output/demo_m17/neural_successor_transfer_trace.jsonl`
+- `output/demo_m17/neural_vs_scalar_compare.json`
+- `output/demo_m17/resource_hazard_field_summary.json`
+- `output/demo_m17/neural_controller_config.json`
+- `output/demo_m17/neural_parameter_snapshot_initial.json`
+- `output/demo_m17/neural_parameter_snapshot_final.json`
+- `output/demo_m17/milestone_17_judge_result.json`
 
 ## Report Paths
+- `docs/milestone_17_report.md`
 - `docs/milestone_16_report.md`
 - `docs/milestone_15_report.md`
 - `docs/milestone_14_report.md`

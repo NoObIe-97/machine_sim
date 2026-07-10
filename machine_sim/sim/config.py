@@ -52,6 +52,9 @@ class SimConfig:
     component_degradation_scale: float = 1.0
     trajectory_compression_enabled: bool = False
     trajectory_compression_max_segments: int = 64
+    neural_controller_enabled: bool = False
+    neural_controller_mode: str = "replace"
+    neural_plasticity_enabled: bool = True
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

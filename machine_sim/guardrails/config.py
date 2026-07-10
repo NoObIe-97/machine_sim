@@ -71,7 +71,9 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "component_degradation_scale",
     "trajectory_compression_enabled",
     "trajectory_compression_max_segments",
-    "component_degradation_scale",
+    "neural_controller_enabled",
+    "neural_controller_mode",
+    "neural_plasticity_enabled",
 }
 
 # Allowed memory event_type labels
