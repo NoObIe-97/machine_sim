@@ -74,6 +74,8 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "neural_controller_enabled",
     "neural_controller_mode",
     "neural_plasticity_enabled",
+    "neural_hidden_size",
+    "neural_plasticity_rate",
 }
 
 # Allowed memory event_type labels

@@ -260,6 +260,8 @@ class SimEngine:
                             neural_controller_enabled=self.config.neural_controller_enabled,
                             neural_controller_mode=self.config.neural_controller_mode,
                             neural_plasticity_enabled=self.config.neural_plasticity_enabled,
+                            neural_hidden_size=self.config.neural_hidden_size,
+                            neural_plasticity_rate=self.config.neural_plasticity_rate,
                             neural_seed=self.config.seed,
                         )
                         successor.max_power = tmpl.max_power

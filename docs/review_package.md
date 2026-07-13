@@ -1,4 +1,4 @@
-# Milestone 17 Final Review Package
+# Milestone 18 Final Review Package
 
 ## Commit History
 
@@ -45,6 +45,8 @@
 - `69747f6` — Milestone 17 internal neural processing unit
 - `14ab341` — Milestone 17A neural determinism and judge hardening
 - `d6845a4` — Milestone 17B judge strictness and stage closing
+- `d89c1a9` — Milestone 17C stage-closing documentation sync
+- (pending) — Milestone 18 neural controller variant sensitivity
 
 ## Branch Name
 `feature/milestone-1`
@@ -53,10 +55,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-359 passed in 58.36s
+385 passed in 46.99s
 
 ## Coverage (Final)
-82.83%
+80.02%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -72,6 +74,9 @@ M16_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
 ## M17 Judge Result
 M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
+
+## M18 Judge Result
+M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
 
 ## Full M1-M17 Regression Summary
 
@@ -93,7 +98,8 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
 | M14A | 20000 ticks, 120x120, 12/12 judge PASS |
 | M15 | 30000 ticks, 120x120, 6 transfers, gen span 4, 12/12 judge PASS |
 | M16 | 6 source records, 3 compressed segments, ratio 0.695, replay stable, 12/12 judge PASS |
-| M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 25296 plasticity events, 12/12 judge PASS |
+| M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 29036 plasticity events, 12/12 judge PASS |
+| M18 | 6 variants, nontrivial sensitivity detected, 14/14 judge PASS |
 
 ## M17 Demo Output
 
@@ -101,12 +107,23 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
 20000 ticks, 120x120 grid, 6 initial units, seed=42
 Active units: 7 (6 initial + 1 fabricated)
 Fabrication: 5 successes, 5 neural successor transfers
-Signal: 189 emissions, 16001 observations
+Signal: 335 emissions, 17323 observations
 Neural state traces: 110
-Neural plasticity events: 25296
+Neural plasticity events: 29036
 Neural-vs-scalar: neural 7 active, scalar 6 active
 Judge: 12/12 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 82.83%, 359 tests
+Coverage: 80.02%, 385 tests
+```
+
+## M18 Demo Output
+
+```
+6 variants: 1 scalar baseline + 5 neural variants
+Nontrivial difference detected: yes
+Nontrivial parameter effect detected: yes
+Most sensitive parameter: plasticity_rate
+Judge: 14/14 PASS, 0 SKIP (strict exact-PASS-only)
+Coverage: 80.02%, 385 tests
 ```
 
 ## Artifact Paths
@@ -117,12 +134,19 @@ Coverage: 82.83%, 359 tests
 - `output/demo_m17/neural_successor_transfer_trace.jsonl`
 - `output/demo_m17/neural_vs_scalar_compare.json`
 - `output/demo_m17/resource_hazard_field_summary.json`
+- `output/demo_m18/neural_variant_sweep_summary.json`
+- `output/demo_m18/neural_variant_similarity_matrix.json`
+- `output/demo_m18/neural_controller_sensitivity_summary.json`
+- `output/demo_m18/per_variant_runtime_summary.jsonl`
+- `output/demo_m18/per_variant_neural_summary.jsonl`
+- `output/demo_m18/milestone_18_judge_result.json`
 - `output/demo_m17/neural_controller_config.json`
 - `output/demo_m17/neural_parameter_snapshot_initial.json`
 - `output/demo_m17/neural_parameter_snapshot_final.json`
 - `output/demo_m17/milestone_17_judge_result.json`
 
 ## Report Paths
+- `docs/milestone_18_report.md`
 - `docs/milestone_17_report.md`
 - `docs/milestone_16_report.md`
 - `docs/milestone_15_report.md`

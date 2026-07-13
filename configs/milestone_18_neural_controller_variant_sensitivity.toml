@@ -1,0 +1,107 @@
+[simulation]
+grid_width = 120
+grid_height = 120
+resource_density = 0.45
+hazard_density = 0.01
+unit_count = 6
+power_drain_rate = 0.08
+max_ticks = 20000
+seed = 42
+component_degradation_scale = 0.2
+
+# Signals
+signal_enabled = true
+signal_pattern_count = 4
+signal_energy_cost = 1.0
+signal_default_radius = 60
+signal_default_decay = 0.01
+signal_default_duration = 40
+signal_observation_window = 20
+
+# Adaptive
+adaptive_enabled = true
+
+# Neural controller
+neural_controller_enabled = true
+neural_controller_mode = "replace"
+neural_plasticity_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.01
+
+# Fabrication
+fabrication_enabled = true
+capsule_enabled = true
+unit_capacity = 40
+fabrication_interval = 5
+fabrication_power_cost = 3.0
+fabrication_material_cost = 0.3
+fabrication_variation = 0.08
+fabrication_min_power_ratio = 0.05
+fabrication_min_component_health = 0.02
+
+# Analysis
+telemetry_enabled = true
+reconciliation_enabled = false
+lineage_drift_enabled = false
+pressure_analysis_enabled = false
+signal_dynamics_enabled = false
+trace_compression_enabled = false
+trace_drift_enabled = false
+summary_consistency_enabled = false
+
+# Long-run / multi-gen
+long_run_adaptation_enabled = true
+multi_generation_trace_enabled = true
+trajectory_compression_enabled = false
+
+# M18 variant sweep definitions
+[[m18_variants]]
+id = "scalar_baseline"
+description = "Scalar adaptive controller baseline, no neural processing"
+neural_controller_enabled = false
+run_ticks = 5000
+
+[[m18_variants]]
+id = "neural_h16_rate001"
+description = "Neural controller: hidden=16, plasticity_rate=0.01 (M17 baseline)"
+neural_controller_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.01
+neural_plasticity_enabled = true
+run_ticks = 10000
+
+[[m18_variants]]
+id = "neural_h8_rate001"
+description = "Neural controller: hidden=8, plasticity_rate=0.01"
+neural_controller_enabled = true
+neural_hidden_size = 8
+neural_plasticity_rate = 0.01
+neural_plasticity_enabled = true
+run_ticks = 5000
+
+[[m18_variants]]
+id = "neural_h32_rate001"
+description = "Neural controller: hidden=32, plasticity_rate=0.01"
+neural_controller_enabled = true
+neural_hidden_size = 32
+neural_plasticity_rate = 0.01
+neural_plasticity_enabled = true
+run_ticks = 5000
+
+[[m18_variants]]
+id = "neural_h16_rate000"
+description = "Neural controller: hidden=16, plasticity disabled (rate=0)"
+neural_controller_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.0
+neural_plasticity_enabled = false
+run_ticks = 5000
+
+[[m18_variants]]
+id = "neural_h16_rate005"
+description = "Neural controller: hidden=16, plasticity_rate=0.05 (5x baseline)"
+neural_controller_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.05
+neural_plasticity_enabled = true
+run_ticks = 5000

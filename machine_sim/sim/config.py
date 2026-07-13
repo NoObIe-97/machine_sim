@@ -55,6 +55,8 @@ class SimConfig:
     neural_controller_enabled: bool = False
     neural_controller_mode: str = "replace"
     neural_plasticity_enabled: bool = True
+    neural_hidden_size: int = 16
+    neural_plasticity_rate: float = 0.01
 
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:

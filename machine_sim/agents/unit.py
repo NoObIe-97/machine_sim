@@ -47,6 +47,8 @@ class MachineUnitImpl(MachineUnit):
         neural_controller_enabled: bool = False,
         neural_controller_mode: str = "replace",
         neural_plasticity_enabled: bool = True,
+        neural_hidden_size: int = 16,
+        neural_plasticity_rate: float = 0.01,
         neural_seed: int = 42,
     ) -> None:
         self.variant = variant or ALL_VARIANTS[0]
@@ -69,7 +71,11 @@ class MachineUnitImpl(MachineUnit):
         self._previous_action_name = "IDLE"
         self._neural_controller: Optional[NeuralController] = None
         if neural_controller_enabled:
-            nc_cfg = NeuralProcessingConfig(plasticity_enabled=neural_plasticity_enabled)
+            nc_cfg = NeuralProcessingConfig(
+                hidden_size=neural_hidden_size,
+                plasticity_rate=neural_plasticity_rate,
+                plasticity_enabled=neural_plasticity_enabled,
+            )
             self._neural_controller = NeuralController(config=nc_cfg, unit_id=unit_id, seed=neural_seed)
         self._generation_index = 0
         self._lifetime_ticks = 0

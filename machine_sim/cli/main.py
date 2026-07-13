@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import random
+import tomllib
 from collections import Counter
 from pathlib import Path
+from typing import Any, Dict, List
 
 import click
 
@@ -76,6 +78,8 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             neural_controller_enabled=cfg.neural_controller_enabled,
             neural_controller_mode=cfg.neural_controller_mode,
             neural_plasticity_enabled=cfg.neural_plasticity_enabled,
+            neural_hidden_size=cfg.neural_hidden_size,
+            neural_plasticity_rate=cfg.neural_plasticity_rate,
             neural_seed=cfg.seed,
         )
         if cfg.long_run_adaptation_enabled:
@@ -942,6 +946,217 @@ def capsule_compare(config: str, ticks: int | None, seed: int) -> None:
     delta_detected = impact["delta"]["neutral_metric_delta_detected"]
     click.echo(f"  {'neutral_metric_delta_detected':<30} {'no' if not delta_detected else 'yes':>12} "
                f"{'yes' if delta_detected else 'no':>12}")
+
+
+@cli.command()
+@click.option("--config", "-c", type=click.Path(exists=True), default="configs/milestone_18_neural_controller_variant_sensitivity.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m18")
+def variant_sweep(config: str, output: str) -> None:
+    """Run M18 neural controller variant sensitivity sweep."""
+    import math as _math
+    from machine_sim.analysis.neural_variant_comparison import (
+        build_similarity_matrix,
+        compute_sensitivity_summary,
+        _count_action_distribution,
+        _load_variant_summary,
+    )
+
+    with open(config, "rb") as f:
+        data = tomllib.load(f)
+
+    base_sim = data.get("simulation", {})
+    variant_defs = data.get("m18_variants", [])
+    outpath = Path(output)
+    outpath.mkdir(parents=True, exist_ok=True)
+
+    variant_ids: List[str] = []
+    variant_summaries: Dict[str, Dict[str, Any]] = {}
+    variant_action_dists: Dict[str, Dict[str, int]] = {}
+    per_variant_runtime: List[Dict[str, Any]] = []
+    per_variant_neural: List[Dict[str, Any]] = []
+
+    for vdef in variant_defs:
+        vid = vdef["id"]
+        variant_ids.append(vid)
+        vdir = outpath / "variants" / vid
+        vdir.mkdir(parents=True, exist_ok=True)
+
+        # Build variant-specific config
+        vcfg_data = dict(base_sim)
+        # Override variant-specific fields
+        for key in ("neural_controller_enabled", "neural_hidden_size", "neural_plasticity_rate",
+                     "neural_plasticity_enabled", "run_ticks"):
+            if key in vdef:
+                if key == "run_ticks":
+                    vcfg_data["max_ticks"] = vdef[key]
+                else:
+                    vcfg_data[key] = vdef[key]
+
+        vcfg = SimConfig(**{k: v for k, v in vcfg_data.items() if hasattr(SimConfig, k)})
+
+        engine = SimEngine(vcfg, seed=vcfg.seed)
+        rng = random.Random(vcfg.seed)
+
+        # Cluster units like the main run command
+        cluster_cx = vcfg.grid_width // 2
+        cluster_cy = vcfg.grid_height // 2
+        cluster_r = min(15, vcfg.grid_width // 6)
+
+        for i in range(vcfg.unit_count):
+            angle = 2.0 * _math.pi * i / vcfg.unit_count
+            r_offset = rng.uniform(0, cluster_r)
+            px = int(cluster_cx + r_offset * _math.cos(angle))
+            py = int(cluster_cy + r_offset * _math.sin(angle))
+            px = max(0, min(vcfg.grid_width - 1, px))
+            py = max(0, min(vcfg.grid_height - 1, py))
+
+            unit = MachineUnitImpl(
+                unit_id=f"v-{vid}-{i:03d}",
+                position=(px, py),
+                signal_enabled=vcfg.signal_enabled,
+                signal_pattern_count=vcfg.signal_pattern_count,
+                signal_energy_cost=vcfg.signal_energy_cost,
+                signal_default_radius=vcfg.signal_default_radius,
+                signal_default_decay=vcfg.signal_default_decay,
+                signal_default_duration=vcfg.signal_default_duration,
+                adaptive_enabled=vcfg.adaptive_enabled,
+                neural_controller_enabled=vcfg.neural_controller_enabled,
+                neural_controller_mode=vcfg.neural_controller_mode,
+                neural_plasticity_enabled=vcfg.neural_plasticity_enabled,
+                neural_hidden_size=vcfg.neural_hidden_size,
+                neural_plasticity_rate=vcfg.neural_plasticity_rate,
+                neural_seed=vcfg.seed,
+            )
+            unit.max_power = 10000
+            unit.power_reserve = 10000
+            engine.register_unit(unit)
+
+        click.echo(f"Running variant {vid}: {vcfg.max_ticks} ticks, "
+                   f"neural={vcfg.neural_controller_enabled}, "
+                   f"hidden={vcfg.neural_hidden_size}, "
+                   f"rate={vcfg.neural_plasticity_rate}")
+        engine.run()
+
+        # Write per-variant artifacts
+        if vcfg.neural_controller_enabled:
+            ns = engine.get_neural_processing_summary()
+            (vdir / "neural_processing_summary.json").write_text(json.dumps(ns, indent=2))
+            with open(vdir / "neural_state_trace.jsonl", "w") as f:
+                for entry in engine._neural_state_trace:
+                    f.write(json.dumps(entry) + "\n")
+            with open(vdir / "neural_action_trace.jsonl", "w") as f:
+                for entry in engine._neural_action_trace:
+                    f.write(json.dumps(entry) + "\n")
+            with open(vdir / "neural_plasticity_trace.jsonl", "w") as f:
+                for entry in engine._neural_plasticity_trace:
+                    f.write(json.dumps(entry) + "\n")
+            if engine._neural_successor_transfer_trace:
+                with open(vdir / "neural_successor_transfer_trace.jsonl", "w") as f:
+                    for entry in engine._neural_successor_transfer_trace:
+                        f.write(json.dumps(entry) + "\n")
+            if engine.units and hasattr(engine.units[0], '_neural_controller') and engine.units[0]._neural_controller is not None:
+                nc_cfg = engine.units[0]._neural_controller.config
+                (vdir / "neural_controller_config.json").write_text(json.dumps({
+                    "input_size": nc_cfg.input_size,
+                    "hidden_size": nc_cfg.hidden_size,
+                    "output_size": nc_cfg.output_size,
+                    "param_output_size": nc_cfg.param_output_size,
+                    "plasticity_rate": nc_cfg.plasticity_rate,
+                    "plasticity_enabled": nc_cfg.plasticity_enabled,
+                    "weight_bound": nc_cfg.weight_bound,
+                }, indent=2))
+        else:
+            # Scalar baseline: write a runtime summary
+            active = sum(1 for u in engine.units if u.is_active)
+            (vdir / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": False,
+                "run_ticks": vcfg.max_ticks,
+                "final_active_count": active,
+                "total_unit_count": len(engine.units),
+                "variant_id": vid,
+            }, indent=2))
+
+        # Resource hazard field summary
+        (vdir / "resource_hazard_field_summary.json").write_text(json.dumps({
+            "total_resource_cells": int(vcfg.grid_width * vcfg.grid_height * vcfg.resource_density),
+            "total_hazard_cells": int(vcfg.grid_width * vcfg.grid_height * vcfg.hazard_density),
+            "run_ticks": vcfg.max_ticks,
+        }, indent=2))
+
+        # Collect summaries for comparison
+        summary = _load_variant_summary(vdir)
+        variant_summaries[vid] = summary
+        action_dist = _count_action_distribution(vdir / "neural_action_trace.jsonl")
+        variant_action_dists[vid] = action_dist
+
+        active = sum(1 for u in engine.units if u.is_active)
+        per_variant_runtime.append({
+            "variant_id": vid,
+            "run_ticks": vcfg.max_ticks,
+            "final_active_count": active,
+            "total_unit_count": len(engine.units),
+            "neural_controller_enabled": vcfg.neural_controller_enabled,
+            "neural_hidden_size": vcfg.neural_hidden_size,
+            "neural_plasticity_rate": vcfg.neural_plasticity_rate,
+            "neural_plasticity_enabled": vcfg.neural_plasticity_enabled,
+        })
+        per_variant_neural.append({
+            "variant_id": vid,
+            "neural_state_trace_count": summary.get("neural_state_trace_count", 0),
+            "neural_action_trace_count": summary.get("neural_action_trace_count", 0),
+            "neural_plasticity_trace_count": summary.get("neural_plasticity_trace_count", 0),
+            "neural_successor_transfer_count": summary.get("neural_successor_transfer_count", 0),
+        })
+
+    # Build cross-variant comparison
+    sim_matrix = build_similarity_matrix(variant_ids, variant_summaries, variant_action_dists)
+    sensitivity = compute_sensitivity_summary(variant_ids, variant_defs, variant_summaries, variant_action_dists)
+
+    # Write top-level artifacts
+    (outpath / "neural_variant_similarity_matrix.json").write_text(json.dumps(sim_matrix, indent=2))
+    (outpath / "neural_controller_sensitivity_summary.json").write_text(json.dumps(sensitivity, indent=2))
+    with open(outpath / "per_variant_runtime_summary.jsonl", "w") as f:
+        for entry in per_variant_runtime:
+            f.write(json.dumps(entry) + "\n")
+    with open(outpath / "per_variant_neural_summary.jsonl", "w") as f:
+        for entry in per_variant_neural:
+            f.write(json.dumps(entry) + "\n")
+
+    # Run-family summary
+    sweep_summary = {
+        "run_family_parameters": {
+            "grid_width": base_sim.get("grid_width"),
+            "grid_height": base_sim.get("grid_height"),
+            "resource_density": base_sim.get("resource_density"),
+            "hazard_density": base_sim.get("hazard_density"),
+            "unit_count": base_sim.get("unit_count"),
+            "seed": base_sim.get("seed"),
+        },
+        "variant_definitions": variant_defs,
+        "per_variant_runtime_summary": per_variant_runtime,
+        "per_variant_neural_summary": per_variant_neural,
+        "similarity_matrix_summary": {
+            "nontrivial_off_diagonal_difference_detected": sim_matrix["nontrivial_off_diagonal_difference_detected"],
+            "variant_count": len(variant_ids),
+        },
+        "controller_sensitivity_summary": {
+            "nontrivial_controller_parameter_effect_detected": sensitivity["nontrivial_controller_parameter_effect_detected"],
+            "most_sensitive_parameters": sensitivity["most_sensitive_parameters"],
+            "sensitivity_score_by_parameter": sensitivity["sensitivity_score_by_parameter"],
+        },
+        "strict_regression_summary": {
+            "m17_regression": "pending",
+            "m14_m15_m16_regression": "pending",
+        },
+        "judge_status": "pending",
+        "source_artifact_references": [f"variants/{vid}/" for vid in variant_ids],
+    }
+    (outpath / "neural_variant_sweep_summary.json").write_text(json.dumps(sweep_summary, indent=2))
+
+    click.echo(f"\nVariant sweep complete. {len(variant_ids)} variants run.")
+    click.echo(f"Nontrivial difference detected: {sim_matrix['nontrivial_off_diagonal_difference_detected']}")
+    click.echo(f"Nontrivial parameter effect detected: {sensitivity['nontrivial_controller_parameter_effect_detected']}")
+    click.echo(f"Artifacts written to {outpath}")
 
 
 if __name__ == "__main__":
