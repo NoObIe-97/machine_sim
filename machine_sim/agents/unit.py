@@ -26,7 +26,7 @@ from machine_sim.analysis.adaptive import (
     SignalFieldSummary,
 )
 from machine_sim.agents.adaptive_control import AdaptiveController, AdaptiveStateVector
-from machine_sim.agents.neural_controller import NeuralController, NeuralProcessingConfig
+from machine_sim.agents.neural_controller import NeuralController, NeuralProcessingConfig, stable_seed
 
 
 class MachineUnitImpl(MachineUnit):
@@ -155,7 +155,7 @@ class MachineUnitImpl(MachineUnit):
             )
 
             import random as _n_rng
-            r = _n_rng.Random(tick * 1000 + hash(self.unit_id))
+            r = _n_rng.Random(tick * 1000 + stable_seed("neural_select", self.unit_id))
             chosen_name, param_biases, raw_logits = self._neural_controller.select_action(sensor_input, r)
 
             # Map neural action name to ActionType
@@ -166,7 +166,11 @@ class MachineUnitImpl(MachineUnit):
                 "EMIT_SIGNAL": ActionType.EMIT_SIGNAL,
                 "IDLE": ActionType.IDLE,
                 "MAINTAIN": ActionType.MAINTAIN,
-                "FABRICATE": ActionType.IDLE,  # fabricate not directly supported
+                # FABRICATE: the neural controller can express fabrication
+                # intent, but fabrication is gated by the engine's fabrication
+                # phase (power/health thresholds). Map to IDLE here; the
+                # engine checks fabrication readiness independently.
+                "FABRICATE": ActionType.IDLE,
             }
             action_type = neural_action_map.get(chosen_name, ActionType.IDLE)
             self._previous_action_name = chosen_name
@@ -239,7 +243,7 @@ class MachineUnitImpl(MachineUnit):
 
             # Weighted random selection from scores
             import random as _rng
-            r = _rng.Random(tick * 1000 + hash(self.unit_id))
+            r = _rng.Random(tick * 1000 + stable_seed("adaptive_select", self.unit_id))
             actions_list = list(scores.keys())
             weights = [scores[a] for a in actions_list]
             total_w = sum(weights) or 1.0

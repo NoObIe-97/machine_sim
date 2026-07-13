@@ -2,10 +2,32 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import random
+import struct
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def stable_seed(*parts: Any) -> int:
+    """Deterministic seed derivation from arbitrary parts.
+
+    Replaces Python hash() which is randomized per process (PYTHONHASHSEED).
+    Uses SHA-256 over a canonical byte representation to guarantee identical
+    seeds across processes, platforms, and Python invocations.
+    """
+    h = hashlib.sha256()
+    for p in parts:
+        if isinstance(p, int):
+            h.update(struct.pack("<q", p))
+        elif isinstance(p, str):
+            h.update(p.encode("utf-8"))
+        elif isinstance(p, bytes):
+            h.update(p)
+        else:
+            h.update(str(p).encode("utf-8"))
+    return int.from_bytes(h.digest()[:8], "little") & 0xFFFFFFFF
 
 
 def _clamp(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
@@ -106,7 +128,7 @@ class NeuralController:
         self._last_action_output: Dict[str, Any] = {}
 
     def _make_rng(self, unit_id: str, seed: int) -> random.Random:
-        combined = hash(("neural_init", unit_id, seed)) & 0xFFFFFFFF
+        combined = stable_seed("neural_init", unit_id, seed)
         return random.Random(combined)
 
     def _initialize_state(self, unit_id: str, seed: int) -> NeuralProcessingState:

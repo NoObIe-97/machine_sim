@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
+from machine_sim.agents.neural_controller import stable_seed
 from machine_sim.analysis.correlation import SignalCorrelator
 from machine_sim.analysis.field_dynamics import SignalFieldDynamics
 from machine_sim.analysis.pressure import PressureAnalyzer
@@ -326,7 +327,7 @@ class SimEngine:
                                 and hasattr(successor, '_neural_controller')
                                 and successor._neural_controller is not None):
                             import random as _nc_rng
-                            nc_rng = _nc_rng.Random(self.tick_count * 7 + hash(unit.unit_id))
+                            nc_rng = _nc_rng.Random(self.tick_count * 7 + stable_seed("nc_transfer", unit.unit_id))
                             source_nc_state = unit._neural_controller.state.copy()
                             successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
                             successor._neural_controller.state = successor_nc_state
@@ -704,7 +705,7 @@ class SimEngine:
                     )
 
                     import random as _nc_fb_rng
-                    nc_fb_rng = _nc_fb_rng.Random(self.tick_count * 13 + hash(unit.unit_id))
+                    nc_fb_rng = _nc_fb_rng.Random(self.tick_count * 13 + stable_seed("nc_feedback", unit.unit_id))
                     pre_w_out = [list(row) for row in unit._neural_controller.state.W_out]
                     unit._neural_controller.update_from_feedback(
                         sensor_input, unit._previous_action_name, nc_feedback, nc_fb_rng
@@ -771,6 +772,7 @@ class SimEngine:
             "neural_controller_enabled": cfg.neural_controller_enabled,
             "neural_controller_mode": cfg.neural_controller_mode,
             "neural_plasticity_enabled": cfg.neural_plasticity_enabled,
+            "run_ticks": self.tick_count,
             "neural_state_trace_count": len(self._neural_state_trace),
             "neural_action_trace_count": len(self._neural_action_trace),
             "neural_plasticity_trace_count": len(self._neural_plasticity_trace),

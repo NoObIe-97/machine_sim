@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 FORBIDDEN_TERMS = [
     "human", "social", "society", "community", "communication", "message",
@@ -14,6 +14,11 @@ FORBIDDEN_TERMS = [
     "agreement", "consensus", "population", "evolution", "mutation",
     "inheritance", "offspring", "parent", "child", "species", "fitness",
     "brain",
+]
+
+FORBIDDEN_ARTIFACT_FIELDS = [
+    "global_map", "oracle", "other_unit_hidden", "future_state",
+    "perfect_information", "god_mode", "external_override",
 ]
 
 REQUIRED_ARTIFACTS = [
@@ -25,6 +30,34 @@ REQUIRED_ARTIFACTS = [
     "resource_hazard_field_summary.json",
     "neural_controller_config.json",
 ]
+
+
+def _count_jsonl_lines(path: Path) -> int:
+    """Count non-empty lines in a JSONL file without loading entire content."""
+    count = 0
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    count += 1
+    except Exception:
+        return 0
+    return count
+
+
+def _scan_artifacts_forbidden_fields(path: Path) -> List[str]:
+    """Scan JSON/JSONL artifacts for forbidden global/oracle field names."""
+    found = []
+    for pattern in ("*.json", "*.jsonl"):
+        for f in path.glob(pattern):
+            try:
+                text = f.read_text(encoding="utf-8").lower()
+                for field_name in FORBIDDEN_ARTIFACT_FIELDS:
+                    if field_name in text:
+                        found.append(f"{f.name}:{field_name}")
+            except Exception:
+                continue
+    return found
 
 
 def judge(output_dir: str) -> Dict[str, Any]:
@@ -52,12 +85,14 @@ def judge(output_dir: str) -> Dict[str, Any]:
         comparison = json.loads(compare_path.read_text())
 
     # 1. long_run_ticks_check: run_ticks >= 20000
-    # Check from resource_hazard_field_summary or neural_processing_summary
-    # The summary doesn't directly have run_ticks, but we check the summary exists
-    # and the trace counts indicate a long run
+    run_ticks = summary.get("run_ticks", 0)
     state_trace_count = summary.get("neural_state_trace_count", 0)
-    # With 20000 ticks and snapshot_interval = 2000, we expect ~10 snapshots
-    checks["long_run_ticks_check"] = "PASS" if state_trace_count >= 5 else "FAIL"
+    if run_ticks >= 20000:
+        checks["long_run_ticks_check"] = "PASS"
+    elif run_ticks == 0 and state_trace_count >= 5:
+        checks["long_run_ticks_check"] = "PASS"
+    else:
+        checks["long_run_ticks_check"] = "FAIL"
 
     # 2. neural_controller_enabled_check
     nc_enabled = summary.get("neural_controller_enabled", False)
@@ -66,24 +101,31 @@ def judge(output_dir: str) -> Dict[str, Any]:
     # 3. neural_state_trace_check: trace exists and has nonzero records
     state_trace_path = path / "neural_state_trace.jsonl"
     state_trace_exists = state_trace_path.exists()
-    state_trace_lines = 0
-    if state_trace_exists:
-        state_trace_lines = len([l for l in state_trace_path.read_text().strip().split("\n") if l])
+    state_trace_lines = _count_jsonl_lines(state_trace_path) if state_trace_exists else 0
     checks["neural_state_trace_check"] = "PASS" if state_trace_exists and state_trace_lines > 0 else "FAIL"
 
     # 4. neural_action_trace_check: action preferences/logits recorded and nontrivial
     action_trace_path = path / "neural_action_trace.jsonl"
     action_trace_exists = action_trace_path.exists()
     action_trace_lines = 0
-    action_variety = set()
+    action_variety: set = set()
     if action_trace_exists:
-        for line in action_trace_path.read_text().strip().split("\n")[:100]:
-            try:
-                rec = json.loads(line)
-                action_variety.add(rec.get("action", ""))
-                action_trace_lines += 1
-            except json.JSONDecodeError:
-                continue
+        try:
+            with open(action_trace_path, "r", encoding="utf-8") as f:
+                for i, line in enumerate(f):
+                    if i >= 100:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                        action_variety.add(rec.get("action", ""))
+                        action_trace_lines += 1
+                    except json.JSONDecodeError:
+                        continue
+        except Exception:
+            pass
     checks["neural_action_trace_check"] = "PASS" if (
         action_trace_exists and action_trace_lines > 0 and len(action_variety) > 1
     ) else "FAIL"
@@ -91,30 +133,31 @@ def judge(output_dir: str) -> Dict[str, Any]:
     # 5. plasticity_update_check: plasticity trace exists and at least one parameter changes
     plasticity_path = path / "neural_plasticity_trace.jsonl"
     plasticity_exists = plasticity_path.exists()
-    plasticity_count = 0
-    if plasticity_exists:
-        plasticity_count = len([l for l in plasticity_path.read_text().strip().split("\n") if l])
+    plasticity_count = _count_jsonl_lines(plasticity_path) if plasticity_exists else 0
     checks["plasticity_update_check"] = "PASS" if plasticity_exists and plasticity_count > 0 else "FAIL"
 
-    # 6. local_input_only_check: summary declares local input; no forbidden global/oracle fields
-    # Check that the config has input_size and no oracle fields
+    # 6. local_input_only_check: config declares local input; no forbidden global/oracle fields in artifacts
     input_size = nc_config.get("input_size", 0)
-    checks["local_input_only_check"] = "PASS" if input_size > 0 else "FAIL"
+    forbidden_fields = _scan_artifacts_forbidden_fields(path)
+    if input_size > 0 and not forbidden_fields:
+        checks["local_input_only_check"] = "PASS"
+    else:
+        checks["local_input_only_check"] = "FAIL"
 
     # 7. neural_vs_scalar_difference_check: nontrivial neural-state and behavior/runtime delta
     nontrivial = comparison.get("nontrivial_neural_difference_detected", False)
     checks["neural_vs_scalar_difference_check"] = "PASS" if nontrivial else "FAIL"
 
     # 8. successor_neural_transfer_check: transfer artifact exists
-    transfer_path = path / "neural_successor_transfer_trace.jsonl"
-    transfer_exists = transfer_path.exists()
-    transfer_count = 0
-    if transfer_exists:
-        transfer_count = len([l for l in transfer_path.read_text().strip().split("\n") if l])
-    # PASS if at least one transfer, or PARTIAL if fabrication didn't occur
-    # For full acceptance, require at least one transfer
     transfer_summary_count = summary.get("neural_successor_transfer_count", 0)
-    checks["successor_neural_transfer_check"] = "PASS" if transfer_summary_count > 0 else "PARTIAL"
+    transfer_path = path / "neural_successor_transfer_trace.jsonl"
+    transfer_file_count = _count_jsonl_lines(transfer_path) if transfer_path.exists() else 0
+    if transfer_summary_count > 0 and transfer_file_count > 0:
+        checks["successor_neural_transfer_check"] = "PASS"
+    elif transfer_summary_count == 0 and transfer_file_count == 0:
+        checks["successor_neural_transfer_check"] = "PARTIAL"
+    else:
+        checks["successor_neural_transfer_check"] = "FAIL"
 
     # 9. signal_observation_check: signal observations > 0
     signal_obs = comparison.get("neural_signal_observations", 0)
@@ -123,25 +166,50 @@ def judge(output_dir: str) -> Dict[str, Any]:
     # 10. bounded_artifact_size_check: JSONL < 50000 lines
     max_lines = 0
     for f in path.glob("*.jsonl"):
-        line_count = len([l for l in f.read_text().strip().split("\n") if l])
+        line_count = _count_jsonl_lines(f)
         max_lines = max(max_lines, line_count)
     checks["bounded_artifact_size_check"] = "PASS" if max_lines < 50000 else "FAIL"
 
-    # 11. m14_m15_m16_regression_check: check if regression judge results exist
-    # This is a soft check - verify the artifacts exist
+    # 11. m14_m15_m16_regression_check: verify regression judge results if they exist
+    reg_files = {
+        "milestone_14": ["milestone_14_judge_result.json"],
+        "milestone_15": ["milestone_15_judge_result.json"],
+        "milestone_16": ["milestone_16_judge_result.json"],
+    }
     reg_passed = True
-    for judge_file in ["milestone_14_judge_result.json", "milestone_15_judge_result.json",
-                       "milestone_16_judge_result.json"]:
-        # Check in parent demo directories if they exist
-        pass
+    reg_details: Dict[str, str] = {}
+    for milestone, filenames in reg_files.items():
+        found = False
+        for fname in filenames:
+            fpath = path / fname
+            if fpath.exists():
+                try:
+                    r = json.loads(fpath.read_text())
+                    status = r.get(f"{milestone.upper()}_JUDGE_STATUS", r.get("JUDGE_STATUS", "UNKNOWN"))
+                    reg_details[milestone] = status
+                    found = True
+                    if status != "PASS":
+                        reg_passed = False
+                except Exception:
+                    reg_details[milestone] = "ERROR"
+                    found = True
+                    reg_passed = False
+        if not found:
+            reg_details[milestone] = "NOT_FOUND"
     checks["m14_m15_m16_regression_check"] = "PASS" if reg_passed else "FAIL"
 
     # 12. machine_native_wording_check: no forbidden terms
     all_text = ""
     for f in path.glob("*.json"):
-        all_text += f.read_text().lower()
+        try:
+            all_text += f.read_text(encoding="utf-8").lower()
+        except Exception:
+            continue
     for f in path.glob("*.jsonl"):
-        all_text += f.read_text().lower()
+        try:
+            all_text += f.read_text(encoding="utf-8").lower()
+        except Exception:
+            continue
     found_forbidden = [t for t in FORBIDDEN_TERMS if t in all_text]
     checks["machine_native_wording_check"] = "PASS" if not found_forbidden else "FAIL"
 
@@ -152,6 +220,8 @@ def judge(output_dir: str) -> Dict[str, Any]:
     results["M17_JUDGE_STATUS"] = status
     results["checks"] = checks
     results["failed_checks"] = failed
+    results["regression_details"] = reg_details
+    results["forbidden_artifact_fields"] = forbidden_fields
     results["thresholds"] = {
         "min_ticks": 20000,
         "min_state_trace_count": 5,
