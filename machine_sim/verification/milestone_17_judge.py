@@ -26,6 +26,7 @@ REQUIRED_ARTIFACTS = [
     "neural_state_trace.jsonl",
     "neural_action_trace.jsonl",
     "neural_plasticity_trace.jsonl",
+    "neural_successor_transfer_trace.jsonl",
     "neural_vs_scalar_compare.json",
     "resource_hazard_field_summary.json",
     "neural_controller_config.json",
@@ -61,7 +62,12 @@ def _scan_artifacts_forbidden_fields(path: Path) -> List[str]:
 
 
 def judge(output_dir: str) -> Dict[str, Any]:
-    """Run all M17 judge checks."""
+    """Run all M17 judge checks.
+
+    Overall M17_JUDGE_STATUS is PASS only when EVERY required check is
+    exactly the string "PASS".  Any other value — PARTIAL, SKIP, UNKNOWN,
+    NOT_FOUND, missing, or FAIL — makes the overall status FAIL.
+    """
     path = Path(output_dir)
     results: Dict[str, Any] = {}
     checks: Dict[str, str] = {}
@@ -84,15 +90,9 @@ def judge(output_dir: str) -> Dict[str, Any]:
     if compare_path.exists():
         comparison = json.loads(compare_path.read_text())
 
-    # 1. long_run_ticks_check: run_ticks >= 20000
+    # 1. long_run_ticks_check: run_ticks >= 20000 (strict — no trace-count fallback)
     run_ticks = summary.get("run_ticks", 0)
-    state_trace_count = summary.get("neural_state_trace_count", 0)
-    if run_ticks >= 20000:
-        checks["long_run_ticks_check"] = "PASS"
-    elif run_ticks == 0 and state_trace_count >= 5:
-        checks["long_run_ticks_check"] = "PASS"
-    else:
-        checks["long_run_ticks_check"] = "FAIL"
+    checks["long_run_ticks_check"] = "PASS" if run_ticks >= 20000 else "FAIL"
 
     # 2. neural_controller_enabled_check
     nc_enabled = summary.get("neural_controller_enabled", False)
@@ -148,15 +148,15 @@ def judge(output_dir: str) -> Dict[str, Any]:
     nontrivial = comparison.get("nontrivial_neural_difference_detected", False)
     checks["neural_vs_scalar_difference_check"] = "PASS" if nontrivial else "FAIL"
 
-    # 8. successor_neural_transfer_check: transfer artifact exists
+    # 8. successor_neural_transfer_check: strict — both summary and file must be nonzero and agree
     transfer_summary_count = summary.get("neural_successor_transfer_count", 0)
     transfer_path = path / "neural_successor_transfer_trace.jsonl"
     transfer_file_count = _count_jsonl_lines(transfer_path) if transfer_path.exists() else 0
     if transfer_summary_count > 0 and transfer_file_count > 0:
         checks["successor_neural_transfer_check"] = "PASS"
-    elif transfer_summary_count == 0 and transfer_file_count == 0:
-        checks["successor_neural_transfer_check"] = "PARTIAL"
     else:
+        # Both zero = no fabrication occurred = FAIL (required)
+        # Disagree = FAIL
         checks["successor_neural_transfer_check"] = "FAIL"
 
     # 9. signal_observation_check: signal observations > 0
@@ -170,32 +170,38 @@ def judge(output_dir: str) -> Dict[str, Any]:
         max_lines = max(max_lines, line_count)
     checks["bounded_artifact_size_check"] = "PASS" if max_lines < 50000 else "FAIL"
 
-    # 11. m14_m15_m16_regression_check: verify regression judge results if they exist
-    reg_files = {
-        "milestone_14": ["milestone_14_judge_result.json"],
-        "milestone_15": ["milestone_15_judge_result.json"],
-        "milestone_16": ["milestone_16_judge_result.json"],
-    }
-    reg_passed = True
+    # 11. m14_m15_m16_regression_check: strictly require real regression evidence
+    # Check for regression_judges field in summary, or individual judge result files
+    reg_from_summary = summary.get("regression_judges", {})
     reg_details: Dict[str, str] = {}
-    for milestone, filenames in reg_files.items():
-        found = False
-        for fname in filenames:
-            fpath = path / fname
-            if fpath.exists():
-                try:
-                    r = json.loads(fpath.read_text())
-                    status = r.get(f"{milestone.upper()}_JUDGE_STATUS", r.get("JUDGE_STATUS", "UNKNOWN"))
-                    reg_details[milestone] = status
-                    found = True
-                    if status != "PASS":
-                        reg_passed = False
-                except Exception:
-                    reg_details[milestone] = "ERROR"
-                    found = True
+    reg_passed = True
+
+    for ms in ("m14", "m15", "m16"):
+        # First try from summary
+        if ms in reg_from_summary:
+            status = reg_from_summary[ms]
+            reg_details[ms] = status
+            if status != "PASS":
+                reg_passed = False
+            continue
+        # Then try from individual judge result files in output dir
+        judge_file = path / f"milestone_{ms[1:]}_judge_result.json"
+        if judge_file.exists():
+            try:
+                r = json.loads(judge_file.read_text())
+                status = r.get(f"MILESTONE_{ms[1:]}_JUDGE_STATUS",
+                               r.get(f"{ms.upper()}_JUDGE_STATUS",
+                                      r.get("JUDGE_STATUS", "UNKNOWN")))
+                reg_details[ms] = status
+                if status != "PASS":
                     reg_passed = False
-        if not found:
-            reg_details[milestone] = "NOT_FOUND"
+            except Exception:
+                reg_details[ms] = "ERROR"
+                reg_passed = False
+        else:
+            reg_details[ms] = "NOT_FOUND"
+            reg_passed = False
+
     checks["m14_m15_m16_regression_check"] = "PASS" if reg_passed else "FAIL"
 
     # 12. machine_native_wording_check: no forbidden terms
@@ -213,18 +219,17 @@ def judge(output_dir: str) -> Dict[str, Any]:
     found_forbidden = [t for t in FORBIDDEN_TERMS if t in all_text]
     checks["machine_native_wording_check"] = "PASS" if not found_forbidden else "FAIL"
 
-    # Overall
-    failed = [k for k, v in checks.items() if v == "FAIL"]
-    status = "PASS" if not failed else "FAIL"
+    # Overall: PASS only if EVERY check is exactly "PASS"
+    non_pass = [k for k, v in checks.items() if v != "PASS"]
+    status = "PASS" if not non_pass else "FAIL"
 
     results["M17_JUDGE_STATUS"] = status
     results["checks"] = checks
-    results["failed_checks"] = failed
+    results["failed_checks"] = non_pass
     results["regression_details"] = reg_details
     results["forbidden_artifact_fields"] = forbidden_fields
     results["thresholds"] = {
         "min_ticks": 20000,
-        "min_state_trace_count": 5,
         "min_action_variety": 2,
         "min_plasticity_events": 1,
         "min_transfer_count": 1,

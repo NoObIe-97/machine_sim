@@ -343,17 +343,19 @@ class TestJudgePasses:
     def test_judge_passes_valid_artifacts(self):
         from machine_sim.verification.milestone_17_judge import judge
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create valid artifacts
+            # Create valid artifacts with run_ticks and regression evidence
             (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
                 "neural_controller_enabled": True,
                 "neural_controller_mode": "replace",
                 "neural_plasticity_enabled": True,
+                "run_ticks": 20000,
                 "neural_state_trace_count": 10,
                 "neural_action_trace_count": 100,
                 "neural_plasticity_trace_count": 5,
                 "neural_successor_transfer_count": 3,
                 "final_active_count": 6,
                 "total_unit_count": 8,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
             }))
             (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({
                 "input_size": 16, "hidden_size": 16, "output_size": 7,
@@ -400,31 +402,113 @@ class TestJudgePasses:
 
 
 class TestM14M15M16Regression:
-    """Test that M14/M15/M16 regression judges are compatible."""
+    """Test that M14/M15/M16 regression judges are strictly required."""
 
-    def test_regression_check_passes_by_default(self):
-        """The regression check is a soft check that passes by default."""
+    def _make_valid_artifacts(self, tmpdir, summary_extra=None):
+        summary = {
+            "neural_controller_enabled": True,
+            "neural_controller_mode": "replace",
+            "neural_plasticity_enabled": True,
+            "run_ticks": 20000,
+            "neural_state_trace_count": 10,
+            "neural_action_trace_count": 100,
+            "neural_plasticity_trace_count": 5,
+            "neural_successor_transfer_count": 3,
+            "final_active_count": 6,
+            "total_unit_count": 8,
+        }
+        if summary_extra:
+            summary.update(summary_extra)
+        (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps(summary))
+        (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({
+            "input_size": 16, "hidden_size": 16, "output_size": 7,
+        }))
+        (Path(tmpdir) / "neural_vs_scalar_compare.json").write_text(json.dumps({
+            "nontrivial_neural_difference_detected": True,
+            "neural_signal_observations": 10,
+        }))
+        (Path(tmpdir) / "resource_hazard_field_summary.json").write_text(json.dumps({}))
+        (Path(tmpdir) / "neural_state_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "hidden_state_summary": {"mean": 0.1, "max": 0.5, "min": -0.3}, "w_out_norm": 1.0, "w_rec_norm": 0.8}) + "\n"
+        )
+        (Path(tmpdir) / "neural_action_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "action": "MOVE", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+            + json.dumps({"tick": 1, "unit_id": "u-0", "action": "SCAN", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+        )
+        (Path(tmpdir) / "neural_plasticity_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "w_out_delta": 0.01, "selected_action": "MOVE"}) + "\n"
+        )
+        (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "source_unit_id": "u-0", "successor_unit_id": "u-6", "parameter_delta": {"hidden_state_delta": 0.1}}) + "\n"
+        )
+
+    def test_regression_fails_when_evidence_missing(self):
+        """Judge must FAIL when no regression evidence is present."""
         from machine_sim.verification.milestone_17_judge import judge
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create minimal valid artifacts
-            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
-                "neural_controller_enabled": True,
-                "neural_state_trace_count": 10,
-                "neural_plasticity_trace_count": 5,
-                "neural_successor_transfer_count": 3,
+            self._make_valid_artifacts(tmpdir)
+            result = judge(tmpdir)
+            # No regression_judges in summary and no judge files -> FAIL
+            assert result["M17_JUDGE_STATUS"] == "FAIL"
+            assert "m14_m15_m16_regression_check" in result["failed_checks"]
+            assert result["regression_details"]["m14"] == "NOT_FOUND"
+
+    def test_regression_fails_when_m14_not_pass(self):
+        """Judge must FAIL when m14 status is not PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_artifacts(tmpdir, {
+                "regression_judges": {"m14": "FAIL", "m15": "PASS", "m16": "PASS"},
+            })
+            result = judge(tmpdir)
+            assert result["M17_JUDGE_STATUS"] == "FAIL"
+            assert "m14_m15_m16_regression_check" in result["failed_checks"]
+
+    def test_regression_fails_when_m15_not_pass(self):
+        """Judge must FAIL when m15 status is not PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_artifacts(tmpdir, {
+                "regression_judges": {"m14": "PASS", "m15": "PARTIAL", "m16": "PASS"},
+            })
+            result = judge(tmpdir)
+            assert result["M17_JUDGE_STATUS"] == "FAIL"
+
+    def test_regression_fails_when_m16_not_pass(self):
+        """Judge must FAIL when m16 status is not PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_artifacts(tmpdir, {
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "SKIP"},
+            })
+            result = judge(tmpdir)
+            assert result["M17_JUDGE_STATUS"] == "FAIL"
+
+    def test_regression_passes_when_all_pass(self):
+        """Judge must PASS when all three regression judges show PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_artifacts(tmpdir, {
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            })
+            result = judge(tmpdir)
+            assert result["checks"]["m14_m15_m16_regression_check"] == "PASS"
+
+    def test_regression_from_judge_result_files(self):
+        """Judge can read regression status from individual judge result files."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_artifacts(tmpdir)
+            # Write individual judge results
+            (Path(tmpdir) / "milestone_14_judge_result.json").write_text(json.dumps({
+                "MILESTONE_14_JUDGE_STATUS": "PASS",
             }))
-            (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({
-                "input_size": 16,
+            (Path(tmpdir) / "milestone_15_judge_result.json").write_text(json.dumps({
+                "MILESTONE_15_JUDGE_STATUS": "PASS",
             }))
-            (Path(tmpdir) / "neural_vs_scalar_compare.json").write_text(json.dumps({
-                "nontrivial_neural_difference_detected": True,
-                "neural_signal_observations": 10,
+            (Path(tmpdir) / "milestone_16_judge_result.json").write_text(json.dumps({
+                "MILESTONE_16_JUDGE_STATUS": "PASS",
             }))
-            (Path(tmpdir) / "resource_hazard_field_summary.json").write_text(json.dumps({}))
-            (Path(tmpdir) / "neural_state_trace.jsonl").write_text("tick\n0\n")
-            (Path(tmpdir) / "neural_action_trace.jsonl").write_text("tick,action\n0,MOVE\n0,SCAN\n")
-            (Path(tmpdir) / "neural_plasticity_trace.jsonl").write_text("tick\n0\n")
-            (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text("tick\n0\n")
             result = judge(tmpdir)
             assert result["checks"]["m14_m15_m16_regression_check"] == "PASS"
 
@@ -725,7 +809,7 @@ class TestM17JudgeHardening:
             (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text("tick\n0\n")
             result = judge(tmpdir)
             assert "regression_details" in result
-            assert "milestone_14" in result["regression_details"]
+            assert "m14" in result["regression_details"]
 
     def test_judge_summary_file_disagree_transfer_fails(self):
         """Judge should fail when summary and file disagree on transfer count."""
@@ -760,3 +844,171 @@ class TestM17JudgeHardening:
         lines = [l for l in source.split("\n") if l.strip() and not l.strip().startswith("#") and not l.strip().startswith('"')]
         code_lines = [l for l in lines if "hash(" in l and "stable_seed" not in l and '"""' not in l and "Replaces" not in l]
         assert len(code_lines) == 0, f"Found bare hash() in code: {code_lines}"
+
+
+class TestStrictRunTicksCheck:
+    """Test that run_ticks is strictly checked — no trace-count fallback."""
+
+    def _make_valid_base(self, tmpdir):
+        (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({
+            "input_size": 16,
+        }))
+        (Path(tmpdir) / "neural_vs_scalar_compare.json").write_text(json.dumps({
+            "nontrivial_neural_difference_detected": True,
+            "neural_signal_observations": 10,
+        }))
+        (Path(tmpdir) / "resource_hazard_field_summary.json").write_text(json.dumps({}))
+        (Path(tmpdir) / "neural_state_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "hidden_state_summary": {"mean": 0.1, "max": 0.5, "min": -0.3}, "w_out_norm": 1.0, "w_rec_norm": 0.8}) + "\n"
+        )
+        (Path(tmpdir) / "neural_action_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "action": "MOVE", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+            + json.dumps({"tick": 1, "unit_id": "u-0", "action": "SCAN", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+        )
+        (Path(tmpdir) / "neural_plasticity_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "unit_id": "u-0", "w_out_delta": 0.01, "selected_action": "MOVE"}) + "\n"
+        )
+        (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text(
+            json.dumps({"tick": 0, "source_unit_id": "u-0", "successor_unit_id": "u-6", "parameter_delta": {"hidden_state_delta": 0.1}}) + "\n"
+        )
+
+    def test_fails_when_run_ticks_missing(self):
+        """Missing run_ticks (defaults to 0) must FAIL."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_base(tmpdir)
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                "neural_state_trace_count": 10,
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 3,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            result = judge(tmpdir)
+            assert result["checks"]["long_run_ticks_check"] == "FAIL"
+            assert "long_run_ticks_check" in result["failed_checks"]
+
+    def test_fails_when_run_ticks_below_threshold(self):
+        """run_ticks < 20000 must FAIL."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_base(tmpdir)
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                "run_ticks": 15000,
+                "neural_state_trace_count": 10,
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 3,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            result = judge(tmpdir)
+            assert result["checks"]["long_run_ticks_check"] == "FAIL"
+
+    def test_passes_when_run_ticks_at_threshold(self):
+        """run_ticks >= 20000 must PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_base(tmpdir)
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                "run_ticks": 20000,
+                "neural_state_trace_count": 10,
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 3,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            result = judge(tmpdir)
+            assert result["checks"]["long_run_ticks_check"] == "PASS"
+
+    def test_no_fallback_from_trace_count(self):
+        """High trace count with missing run_ticks must still FAIL."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_base(tmpdir)
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                # No run_ticks field
+                "neural_state_trace_count": 50,  # High trace count
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 3,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            result = judge(tmpdir)
+            assert result["checks"]["long_run_ticks_check"] == "FAIL"
+
+
+class TestStrictPartialRejection:
+    """Test that PARTIAL is treated as failure, not as passing."""
+
+    def test_partial_transfer_fails_overall(self):
+        """A PARTIAL successor_neural_transfer_check must make overall FAIL."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Summary says 0 transfers, file is empty -> both zero -> FAIL
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                "run_ticks": 20000,
+                "neural_state_trace_count": 10,
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 0,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({"input_size": 16}))
+            (Path(tmpdir) / "neural_vs_scalar_compare.json").write_text(json.dumps({
+                "nontrivial_neural_difference_detected": True,
+                "neural_signal_observations": 10,
+            }))
+            (Path(tmpdir) / "resource_hazard_field_summary.json").write_text(json.dumps({}))
+            (Path(tmpdir) / "neural_state_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "hidden_state_summary": {"mean": 0.1, "max": 0.5, "min": -0.3}, "w_out_norm": 1.0, "w_rec_norm": 0.8}) + "\n"
+            )
+            (Path(tmpdir) / "neural_action_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "action": "MOVE", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+                + json.dumps({"tick": 1, "unit_id": "u-0", "action": "SCAN", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+            )
+            (Path(tmpdir) / "neural_plasticity_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "w_out_delta": 0.01, "selected_action": "MOVE"}) + "\n"
+            )
+            (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text("")
+            result = judge(tmpdir)
+            assert result["M17_JUDGE_STATUS"] == "FAIL"
+            assert result["checks"]["successor_neural_transfer_check"] == "FAIL"
+            assert "successor_neural_transfer_check" in result["failed_checks"]
+
+    def test_only_pass_means_pass(self):
+        """No check value other than 'PASS' should contribute to overall PASS."""
+        from machine_sim.verification.milestone_17_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a scenario where one check would be PARTIAL if it existed
+            # but since we removed PARTIAL entirely, verify all checks are PASS or FAIL
+            (Path(tmpdir) / "neural_processing_summary.json").write_text(json.dumps({
+                "neural_controller_enabled": True,
+                "run_ticks": 20000,
+                "neural_state_trace_count": 10,
+                "neural_plasticity_trace_count": 5,
+                "neural_successor_transfer_count": 3,
+                "regression_judges": {"m14": "PASS", "m15": "PASS", "m16": "PASS"},
+            }))
+            (Path(tmpdir) / "neural_controller_config.json").write_text(json.dumps({"input_size": 16}))
+            (Path(tmpdir) / "neural_vs_scalar_compare.json").write_text(json.dumps({
+                "nontrivial_neural_difference_detected": True,
+                "neural_signal_observations": 10,
+            }))
+            (Path(tmpdir) / "resource_hazard_field_summary.json").write_text(json.dumps({}))
+            (Path(tmpdir) / "neural_state_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "hidden_state_summary": {"mean": 0.1, "max": 0.5, "min": -0.3}, "w_out_norm": 1.0, "w_rec_norm": 0.8}) + "\n"
+            )
+            (Path(tmpdir) / "neural_action_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "action": "MOVE", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+                + json.dumps({"tick": 1, "unit_id": "u-0", "action": "SCAN", "action_logits": [0.1]*7, "action_preferences": [1/7]*7}) + "\n"
+            )
+            (Path(tmpdir) / "neural_plasticity_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "unit_id": "u-0", "w_out_delta": 0.01, "selected_action": "MOVE"}) + "\n"
+            )
+            (Path(tmpdir) / "neural_successor_transfer_trace.jsonl").write_text(
+                json.dumps({"tick": 0, "source_unit_id": "u-0", "successor_unit_id": "u-6", "parameter_delta": {"hidden_state_delta": 0.1}}) + "\n"
+            )
+            result = judge(tmpdir)
+            # Every check value must be exactly "PASS"
+            for check_name, check_val in result["checks"].items():
+                assert check_val == "PASS", f"Check {check_name} is {check_val}, expected PASS"

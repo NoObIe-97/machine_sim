@@ -2,11 +2,13 @@
 
 ## Date
 
-2026-07-10
+2026-07-13
 
 ## Summary
 
 Implemented a compact recurrent neural processing unit inside each adaptive unit. The neural controller converts local sensor inputs plus recurrent state into action preferences and selected action parameters. Its internal state and plastic parameters update from local operational feedback during runtime. The neural controller replaces the scalar adaptive controller for normal action selection when enabled.
+
+M17A hardened the neural controller by replacing Python `hash()` with a stable SHA-256-based `stable_seed()` for cross-process determinism. M17B hardened the M17 judge to require exact PASS on every check and removed permissive fallbacks.
 
 ## Design Summary
 
@@ -17,7 +19,7 @@ Implemented a compact recurrent neural processing unit inside each adaptive unit
 - Action selection via softmax over neural action logits
 - Local plasticity update using eligibility trace: `W_out += lr * delta * outer(h, a_onehot)`
 - Successor neural-state transfer with bounded Gaussian variation
-- M17 independent judge with 12 required checks
+- M17 independent judge with 12 required checks, all must be exactly PASS
 
 ## Why Neural Controller Instead of Transformer/Token Model
 
@@ -36,7 +38,20 @@ param_biases = clamp(W_param @ h_t + c_param, -1, 1)
 - Hidden/recurrent state size: 16
 - Action output size: 7 (MOVE, SCAN, HARVEST, EMIT_SIGNAL, IDLE, MAINTAIN, FABRICATE)
 - Parameter output size: 3 (signal intensity bias, scan interval bias, extraction threshold bias)
-- Weight initialization: Xavier-like with deterministic seed
+- Weight initialization: Xavier-like with deterministic seed via `stable_seed()` (SHA-256)
+
+## Stable Seed Determinism (M17A)
+
+Python's built-in `hash()` is randomized per process via `PYTHONHASHSEED`, which breaks cross-process determinism. M17A replaced all `hash()` calls in neural RNG seed paths with `stable_seed(*parts)`:
+
+- Uses SHA-256 over canonical byte representation
+- Returns a 32-bit unsigned integer
+- Identical across processes, platforms, and Python invocations
+- Applied to: neural controller init, neural action selection, adaptive action selection, neural transfer, neural feedback
+
+## FABRICATE Output Semantics
+
+The neural controller outputs FABRICATE as a valid action in its vocabulary. However, fabrication is gated by the engine's fabrication phase (power/health thresholds), not by unit action selection. When the neural controller selects FABRICATE, it maps to `ActionType.IDLE` in the unit's neural action map. The engine checks fabrication readiness independently.
 
 ## Sensor Input Vector Schema
 
@@ -67,7 +82,7 @@ All inputs derived from local unit state only. No global map input, no future st
 - EMIT_SIGNAL: emit signal with adaptive parameters
 - IDLE: conserve power
 - MAINTAIN: repair weakest critical component
-- FABRICATE: mapped to IDLE (fabrication not directly controlled)
+- FABRICATE: intent-only neural output, mapped to IDLE (engine-gated)
 
 ## Plasticity Update Rule
 
@@ -118,6 +133,15 @@ neural_plasticity_enabled=true
 - Total associations: 2258
 - 4 signal patterns with balanced emission rates
 
+## M17 Judge Strictness (M17B)
+
+The M17 judge was hardened so that:
+- Overall `M17_JUDGE_STATUS` is `PASS` only when **every required check is exactly the string `PARTIAL` is never produced; the zero-transfer case now fails outright**
+- `long_run_ticks_check` requires `run_ticks >= 20000` with no trace-count fallback
+- `m14_m15_m16_regression_check` requires real regression evidence (summary `regression_judges` field or judge result files), not default-pass
+- `successor_neural_transfer_check` requires both summary count and file count > 0 and consistent
+- `failed_checks` lists every check whose value is not exactly `PASS`
+
 ## M14/M15/M16 Regression Judge Results
 
 | Milestone | Status | Checks |
@@ -162,8 +186,7 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 ## Tests and Coverage
 
 ```
-332 passed in 35.03s
-Coverage: 82.77%
+359 passed in 58.36s
 ```
 
 ## Commands Actually Run
