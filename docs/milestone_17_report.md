@@ -136,7 +136,7 @@ neural_plasticity_enabled=true
 ## M17 Judge Strictness (M17B)
 
 The M17 judge was hardened so that:
-- Overall `M17_JUDGE_STATUS` is `PASS` only when **every required check is exactly the string `PARTIAL` is never produced; the zero-transfer case now fails outright**
+- Overall `M17_JUDGE_STATUS` is `PASS` only when every required check is exactly `PASS`; any non-PASS value fails the judge. `PARTIAL` is never produced, and the zero-transfer case now fails outright.
 - `long_run_ticks_check` requires `run_ticks >= 20000` with no trace-count fallback
 - `m14_m15_m16_regression_check` requires real regression evidence (summary `regression_judges` field or judge result files), not default-pass
 - `successor_neural_transfer_check` requires both summary count and file count > 0 and consistent
@@ -187,6 +187,7 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
 
 ```
 359 passed in 58.36s
+Coverage: 82.83%
 ```
 
 ## Commands Actually Run

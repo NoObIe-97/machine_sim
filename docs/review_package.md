@@ -44,7 +44,7 @@
 - `5edc31e` — Milestone 16 adaptive trajectory compression and offline analysis
 - `69747f6` — Milestone 17 internal neural processing unit
 - `14ab341` — Milestone 17A neural determinism and judge hardening
-- (pending) — Milestone 17B judge strictness and stage closing
+- `d6845a4` — Milestone 17B judge strictness and stage closing
 
 ## Branch Name
 `feature/milestone-1`
@@ -56,7 +56,7 @@ https://github.com/NoObIe-97/machine_sim.git
 359 passed in 58.36s
 
 ## Coverage (Final)
-To be updated after coverage run.
+82.83%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -106,7 +106,7 @@ Neural state traces: 110
 Neural plasticity events: 25296
 Neural-vs-scalar: neural 7 active, scalar 6 active
 Judge: 12/12 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: pending rerun, 359 tests
+Coverage: 82.83%, 359 tests
 ```
 
 ## Artifact Paths
