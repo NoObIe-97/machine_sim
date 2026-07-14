@@ -409,8 +409,10 @@ class NeuralController:
 
         def _matrix_delta(a: List[List[float]], b: List[List[float]]) -> float:
             total = 0.0
-            for i in range(len(a)):
-                for j in range(len(a[i])):
+            rows = min(len(a), len(b))
+            for i in range(rows):
+                cols = min(len(a[i]), len(b[i]))
+                for j in range(cols):
                     total += abs(a[i][j] - b[i][j])
             return total
 

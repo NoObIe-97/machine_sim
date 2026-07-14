@@ -88,6 +88,12 @@ class SimEngine:
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
+        # M19: Record initial architecture descriptor
+        if (self.config.neural_architecture_variation_enabled
+                and hasattr(unit, '_architecture_descriptor')
+                and unit._architecture_descriptor is not None):
+            self._architecture_initial_descriptors.append(
+                unit._architecture_descriptor.to_dict())
 
     def initialize(self) -> None:
         self.world.populate_resources(self.config.resource_density, self.rng)
@@ -460,6 +466,18 @@ class SimEngine:
                                 })
 
                         new_units.append(successor)
+
+                        # M19: Deduct architecture fabrication cost from source unit
+                        if (self.config.neural_architecture_variation_enabled
+                                and successor_arch is not None):
+                            from machine_sim.agents.neural_architecture import compute_fabrication_cost, NeuralArchitectureConfig as _ArchCfgFab
+                            arch_fab_cfg = NeuralArchitectureConfig(
+                                neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                                neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
+                            )
+                            arch_fab = compute_fabrication_cost(successor_arch, arch_fab_cfg)
+                            unit.power_reserve = max(0.0, unit.power_reserve - arch_fab)
+
                         self._record_event(Event(
                             tick=self.tick_count,
                             event_type=EventType.FABRICATION_SUCCEEDED,

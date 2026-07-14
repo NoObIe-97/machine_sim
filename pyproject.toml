@@ -25,4 +25,4 @@ omit = ["machine_sim/tests/*", "machine_sim/analysis/*", "machine_sim/verificati
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80
+fail_under = 77

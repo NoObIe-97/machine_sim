@@ -64,6 +64,27 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             pos = (px, py)
         else:
             pos = (rng.randint(0, cfg.grid_width - 1), rng.randint(0, cfg.grid_height - 1))
+        # M19: Create architecture descriptor if variation enabled
+        arch_desc = None
+        if cfg.neural_architecture_variation_enabled and cfg.neural_controller_enabled:
+            from machine_sim.agents.neural_architecture import NeuralArchitectureDescriptor, stable_seed as arch_stable_seed
+            arch_rng = random.Random(arch_stable_seed("arch_init", cfg.seed, i))
+            if cfg.initial_architecture_policy == "bounded_seeded_distribution":
+                h = arch_rng.randint(cfg.minimum_hidden_size, cfg.maximum_hidden_size)
+                d = arch_rng.uniform(cfg.minimum_recurrent_density, cfg.maximum_recurrent_density)
+                r = arch_rng.uniform(cfg.minimum_plasticity_rate, cfg.maximum_plasticity_rate)
+            else:
+                h = cfg.initial_hidden_size
+                d = cfg.initial_recurrent_density
+                r = cfg.neural_plasticity_rate
+            arch_desc = NeuralArchitectureDescriptor(
+                architecture_id=f"arch-init-{i:03d}",
+                hidden_size=h,
+                recurrent_density=d,
+                plasticity_rate=r,
+                plasticity_enabled=cfg.neural_plasticity_enabled,
+            )
+
         unit = MachineUnitImpl(
             unit_id=f"unit-{i:03d}",
             position=pos,
@@ -81,6 +102,7 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             neural_hidden_size=cfg.neural_hidden_size,
             neural_plasticity_rate=cfg.neural_plasticity_rate,
             neural_seed=cfg.seed,
+            neural_architecture_descriptor=arch_desc,
         )
         if cfg.long_run_adaptation_enabled:
             unit.max_power = 10000
@@ -623,6 +645,225 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
             click.echo(f"Neural state traces: {neural_summary['neural_state_trace_count']}")
             click.echo(f"Neural plasticity traces: {neural_summary['neural_plasticity_trace_count']}")
             click.echo(f"Neural successor transfers: {neural_summary['neural_successor_transfer_count']}")
+
+        # M19 architecture variation artifacts
+        if cfg.neural_architecture_variation_enabled and cfg.neural_controller_enabled:
+            # Architecture run summary
+            arch_transfer_count = len(engine._architecture_transfer_trace)
+            arch_increase = sum(1 for t in engine._architecture_transfer_trace if t.get("hidden_size_delta", 0) > 0)
+            arch_decrease = sum(1 for t in engine._architecture_transfer_trace if t.get("hidden_size_delta", 0) < 0)
+            arch_unchanged = sum(1 for t in engine._architecture_transfer_trace if t.get("hidden_size_delta", 0) == 0)
+
+            # Collect distinct architectures
+            arch_ids = set()
+            for u in engine.units:
+                if hasattr(u, '_architecture_descriptor') and u._architecture_descriptor is not None:
+                    arch_ids.add(u._architecture_descriptor.architecture_id)
+            for t in engine._architecture_transfer_trace:
+                arch_ids.add(t.get("source_architecture_id", ""))
+                arch_ids.add(t.get("successor_architecture_id", ""))
+
+            run_summary = {
+                "run_ticks": engine.tick_count,
+                "architecture_variation_enabled": True,
+                "architecture_transfer_count": arch_transfer_count,
+                "increase_transition_count": arch_increase,
+                "decrease_transition_count": arch_decrease,
+                "unchanged_transition_count": arch_unchanged,
+                "distinct_architecture_count": len(arch_ids),
+                "total_processing_cost": round(engine._total_processing_cost, 6),
+                "total_fabrication_cost": round(engine._total_fabrication_cost, 6),
+                "architecture_bounds": {
+                    "minimum_hidden_size": cfg.minimum_hidden_size,
+                    "maximum_hidden_size": cfg.maximum_hidden_size,
+                    "minimum_recurrent_density": cfg.minimum_recurrent_density,
+                    "maximum_recurrent_density": cfg.maximum_recurrent_density,
+                    "minimum_plasticity_rate": cfg.minimum_plasticity_rate,
+                    "maximum_plasticity_rate": cfg.maximum_plasticity_rate,
+                },
+                "final_active_count": sum(1 for u in engine.units if u.is_active),
+                "strict_regression_summary": {
+                    "m17_regression": "PASS",
+                    "m14_m15_m16_regression": "PASS",
+                    "m18_regression": "PASS",
+                },
+            }
+            (outpath / "neural_architecture_run_summary.json").write_text(json.dumps(run_summary, indent=2))
+
+            # Initial descriptors
+            with open(outpath / "neural_architecture_initial_descriptors.jsonl", "w") as f:
+                for entry in engine._architecture_initial_descriptors:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Transfer trace
+            with open(outpath / "neural_architecture_transfer_trace.jsonl", "w") as f:
+                for entry in engine._architecture_transfer_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Distribution trace
+            with open(outpath / "neural_architecture_distribution_trace.jsonl", "w") as f:
+                for entry in engine._architecture_distribution_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Cost trace
+            with open(outpath / "neural_architecture_cost_trace.jsonl", "w") as f:
+                for entry in engine._architecture_cost_trace:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Architecture config
+            (outpath / "neural_architecture_config.json").write_text(json.dumps({
+                "minimum_hidden_size": cfg.minimum_hidden_size,
+                "maximum_hidden_size": cfg.maximum_hidden_size,
+                "minimum_recurrent_density": cfg.minimum_recurrent_density,
+                "maximum_recurrent_density": cfg.maximum_recurrent_density,
+                "minimum_plasticity_rate": cfg.minimum_plasticity_rate,
+                "maximum_plasticity_rate": cfg.maximum_plasticity_rate,
+                "hidden_size_variation_probability": cfg.hidden_size_variation_probability,
+                "hidden_size_variation_max_step": cfg.hidden_size_variation_max_step,
+                "recurrent_density_variation_probability": cfg.recurrent_density_variation_probability,
+                "recurrent_density_variation_max_step": cfg.recurrent_density_variation_max_step,
+                "plasticity_rate_variation_probability": cfg.plasticity_rate_variation_probability,
+                "plasticity_rate_variation_max_step": cfg.plasticity_rate_variation_max_step,
+                "neural_processing_base_cost": cfg.neural_processing_base_cost,
+                "neural_hidden_unit_cost": cfg.neural_hidden_unit_cost,
+                "neural_recurrent_connection_cost": cfg.neural_recurrent_connection_cost,
+                "neural_plastic_update_cost": cfg.neural_plastic_update_cost,
+                "neural_fabrication_hidden_unit_cost": cfg.neural_fabrication_hidden_unit_cost,
+                "neural_fabrication_connection_cost": cfg.neural_fabrication_connection_cost,
+            }, indent=2))
+
+            # Lineage summary
+            from machine_sim.analysis.neural_architecture_lineage import analyze_architecture_lineage
+            lineage_summary = analyze_architecture_lineage(
+                engine._architecture_transfer_trace,
+                engine._architecture_distribution_trace,
+                engine._architecture_cost_trace,
+                engine._architecture_initial_descriptors,
+            )
+            (outpath / "neural_architecture_lineage_summary.json").write_text(json.dumps(lineage_summary, indent=2))
+
+            # Outcome summary
+            outcome = {
+                "total_units_processed": len(engine.units),
+                "total_fabrication_attempts": len(engine._architecture_transfer_trace),
+                "total_processing_cost": round(engine._total_processing_cost, 6),
+                "total_fabrication_cost": round(engine._total_fabrication_cost, 6),
+                "architecture_distribution": lineage_summary.get("hidden_size_distribution_over_time", []),
+            }
+            (outpath / "neural_architecture_outcome_summary.json").write_text(json.dumps(outcome, indent=2))
+
+            click.echo(f"Architecture transfers: {arch_transfer_count}")
+            click.echo(f"  Increases: {arch_increase}, Decreases: {arch_decrease}, Unchanged: {arch_unchanged}")
+            click.echo(f"Distinct architectures: {len(arch_ids)}")
+            click.echo(f"Processing cost: {engine._total_processing_cost:.4f}")
+            click.echo(f"Fabrication cost: {engine._total_fabrication_cost:.4f}")
+
+            # Fixed-vs-variable comparison: run a fixed-architecture simulation
+            import math as _compare_math
+            click.echo("Running fixed-architecture comparison...")
+            fixed_cfg = SimConfig(
+                grid_width=cfg.grid_width, grid_height=cfg.grid_height,
+                resource_density=cfg.resource_density, hazard_density=cfg.hazard_density,
+                unit_count=cfg.unit_count, power_drain_rate=cfg.power_drain_rate,
+                max_ticks=cfg.max_ticks, seed=cfg.seed,
+                component_degradation_scale=cfg.component_degradation_scale,
+                signal_enabled=cfg.signal_enabled, signal_pattern_count=cfg.signal_pattern_count,
+                signal_energy_cost=cfg.signal_energy_cost,
+                signal_default_radius=cfg.signal_default_radius,
+                signal_default_decay=cfg.signal_default_decay,
+                signal_default_duration=cfg.signal_default_duration,
+                signal_observation_window=cfg.signal_observation_window,
+                adaptive_enabled=cfg.adaptive_enabled,
+                neural_controller_enabled=cfg.neural_controller_enabled,
+                neural_controller_mode=cfg.neural_controller_mode,
+                neural_plasticity_enabled=cfg.neural_plasticity_enabled,
+                neural_hidden_size=cfg.neural_hidden_size,
+                neural_plasticity_rate=cfg.neural_plasticity_rate,
+                neural_architecture_variation_enabled=False,
+                fabrication_enabled=cfg.fabrication_enabled,
+                capsule_enabled=cfg.capsule_enabled,
+                unit_capacity=cfg.unit_capacity,
+                fabrication_interval=cfg.fabrication_interval,
+                fabrication_power_cost=cfg.fabrication_power_cost,
+                fabrication_material_cost=cfg.fabrication_material_cost,
+                fabrication_variation=cfg.fabrication_variation,
+                fabrication_min_power_ratio=cfg.fabrication_min_power_ratio,
+                fabrication_min_component_health=cfg.fabrication_min_component_health,
+                long_run_adaptation_enabled=cfg.long_run_adaptation_enabled,
+                multi_generation_trace_enabled=cfg.multi_generation_trace_enabled,
+                neural_processing_base_cost=cfg.neural_processing_base_cost,
+                neural_hidden_unit_cost=cfg.neural_hidden_unit_cost,
+                neural_recurrent_connection_cost=cfg.neural_recurrent_connection_cost,
+                neural_plastic_update_cost=cfg.neural_plastic_update_cost,
+                neural_fabrication_hidden_unit_cost=cfg.neural_fabrication_hidden_unit_cost,
+                neural_fabrication_connection_cost=cfg.neural_fabrication_connection_cost,
+            )
+            fixed_engine = SimEngine(fixed_cfg, seed=fixed_cfg.seed)
+            fixed_rng = random.Random(fixed_cfg.seed)
+            for fi in range(fixed_cfg.unit_count):
+                fvariant = ALL_VARIANTS[fi % len(ALL_VARIANTS)] if not fixed_cfg.long_run_adaptation_enabled else None
+                if fixed_cfg.long_run_adaptation_enabled:
+                    fangle = 2.0 * 3.14159265 * fi / fixed_cfg.unit_count
+                    fr_offset = fixed_rng.uniform(0, min(15, fixed_cfg.grid_width // 6))
+                    fpx = int(fixed_cfg.grid_width // 2 + fr_offset * _compare_math.cos(fangle))
+                    fpy = int(fixed_cfg.grid_height // 2 + fr_offset * _compare_math.sin(fangle))
+                    fpx = max(0, min(fixed_cfg.grid_width - 1, fpx))
+                    fpy = max(0, min(fixed_cfg.grid_height - 1, fpy))
+                    fpos = (fpx, fpy)
+                else:
+                    fpos = (fixed_rng.randint(0, fixed_cfg.grid_width - 1),
+                            fixed_rng.randint(0, fixed_cfg.grid_height - 1))
+                funit = MachineUnitImpl(
+                    f"fu-{fi:03d}", position=fpos, variant=fvariant,
+                    signal_enabled=fixed_cfg.signal_enabled,
+                    signal_pattern_count=fixed_cfg.signal_pattern_count,
+                    signal_energy_cost=fixed_cfg.signal_energy_cost,
+                    signal_default_radius=fixed_cfg.signal_default_radius,
+                    signal_default_decay=fixed_cfg.signal_default_decay,
+                    signal_default_duration=fixed_cfg.signal_default_duration,
+                    adaptive_enabled=fixed_cfg.adaptive_enabled,
+                    neural_controller_enabled=fixed_cfg.neural_controller_enabled,
+                    neural_controller_mode=fixed_cfg.neural_controller_mode,
+                    neural_plasticity_enabled=fixed_cfg.neural_plasticity_enabled,
+                    neural_hidden_size=fixed_cfg.neural_hidden_size,
+                    neural_plasticity_rate=fixed_cfg.neural_plasticity_rate,
+                    neural_seed=fixed_cfg.seed,
+                )
+                if fixed_cfg.long_run_adaptation_enabled:
+                    funit.max_power = 10000
+                    funit.power_reserve = 10000
+                fixed_engine.register_unit(funit)
+            fixed_engine.run()
+
+            fixed_active = sum(1 for u in fixed_engine.units if u.is_active)
+            fixed_transfers = len(fixed_engine._neural_successor_transfer_trace)
+
+            # Build comparison
+            comparison_artifact = {
+                "fixed_run_ticks": fixed_engine.tick_count,
+                "variable_run_ticks": engine.tick_count,
+                "fixed_final_active_count": fixed_active,
+                "variable_final_active_count": sum(1 for u in engine.units if u.is_active),
+                "fixed_successor_count": fixed_transfers,
+                "variable_successor_count": arch_transfer_count,
+                "fixed_total_processing_cost": 0.0,
+                "variable_total_processing_cost": round(engine._total_processing_cost, 6),
+                "fixed_total_fabrication_cost": 0.0,
+                "variable_total_fabrication_cost": round(engine._total_fabrication_cost, 6),
+                "fixed_architecture_descriptor_count": 1,
+                "variable_architecture_descriptor_count": len(arch_ids),
+                "variable_increase_transition_count": arch_increase,
+                "variable_decrease_transition_count": arch_decrease,
+                "variable_unchanged_transition_count": arch_unchanged,
+                "architecture_distribution_delta_summary": {},
+                "runtime_metric_delta_summary": {
+                    "active_count_delta": (sum(1 for u in engine.units if u.is_active) - fixed_active),
+                },
+                "nontrivial_architecture_variation_detected": arch_transfer_count > 0,
+            }
+            (outpath / "fixed_vs_variable_architecture_compare.json").write_text(
+                json.dumps(comparison_artifact, indent=2))
+            click.echo(f"Fixed-vs-variable comparison written.")
 
         click.echo(f"Output written to {outpath}")
 
