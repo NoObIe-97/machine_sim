@@ -102,16 +102,54 @@ def judge(output_dir: str) -> Dict[str, Any]:
             break
     checks["per_variant_artifact_check"] = "PASS" if all_artifacts_ok else "FAIL"
 
-    # 7. per_variant_runtime_check: primary neural variant >= 10000, others >= 5000
+    # 7. per_variant_runtime_check: strict — file must exist, have rows for every variant, thresholds met
     runtime_ok = True
-    for rt in runtimes:
-        ticks = rt.get("run_ticks", 0)
-        is_neural = rt.get("neural_controller_enabled", False)
-        is_primary = is_neural and rt.get("neural_hidden_size") == 16 and rt.get("neural_plasticity_rate") == 0.01
-        if is_primary and ticks < 10000:
-            runtime_ok = False
-        elif not is_primary and ticks < 5000:
-            runtime_ok = False
+    runtime_fail_reasons: List[str] = []
+
+    if not runtime_path.exists():
+        runtime_ok = False
+        runtime_fail_reasons.append("per_variant_runtime_summary.jsonl missing")
+    elif not runtimes:
+        runtime_ok = False
+        runtime_fail_reasons.append("per_variant_runtime_summary.jsonl empty")
+    else:
+        # Check every expected variant_id has a runtime row
+        runtime_ids = [rt.get("variant_id") for rt in runtimes]
+        for vid in variant_ids:
+            if vid not in runtime_ids:
+                runtime_ok = False
+                runtime_fail_reasons.append(f"missing runtime row for variant {vid}")
+
+        # Check for duplicate variant_ids
+        seen_ids: set = set()
+        for rt in runtimes:
+            vid = rt.get("variant_id")
+            if vid in seen_ids:
+                runtime_ok = False
+                runtime_fail_reasons.append(f"duplicate runtime row for variant {vid}")
+            seen_ids.add(vid)
+
+        # Check required fields and thresholds for each row
+        required_fields = ("variant_id", "run_ticks", "neural_controller_enabled",
+                           "neural_hidden_size", "neural_plasticity_rate")
+        for rt in runtimes:
+            for field_name in required_fields:
+                if field_name not in rt:
+                    runtime_ok = False
+                    runtime_fail_reasons.append(f"variant {rt.get('variant_id', '?')} missing field {field_name}")
+
+            ticks = rt.get("run_ticks", 0)
+            is_neural = rt.get("neural_controller_enabled", False)
+            is_primary = (is_neural
+                          and rt.get("neural_hidden_size") == 16
+                          and rt.get("neural_plasticity_rate") == 0.01)
+            if is_primary and ticks < 10000:
+                runtime_ok = False
+                runtime_fail_reasons.append(f"variant {rt.get('variant_id')} primary below 10000 ticks ({ticks})")
+            elif not is_primary and ticks < 5000:
+                runtime_ok = False
+                runtime_fail_reasons.append(f"variant {rt.get('variant_id')} below 5000 ticks ({ticks})")
+
     checks["per_variant_runtime_check"] = "PASS" if runtime_ok else "FAIL"
 
     # 8. similarity_matrix_check: matrix exists, square, numeric

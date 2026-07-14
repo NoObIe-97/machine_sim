@@ -201,6 +201,107 @@ class TestSensitivitySummary:
             assert 0.0 <= v <= 1.0
 
 
+class TestM18RuntimeSummaryStrictness:
+    """Test that per_variant_runtime_check is strict about the runtime summary file."""
+
+    def _make_valid_fixture(self, tmpdir, runtime_lines=None):
+        """Create a valid fixture with optional custom runtime content."""
+        (Path(tmpdir) / "neural_variant_sweep_summary.json").write_text(json.dumps({
+            "variant_definitions": [
+                {"id": "v1", "neural_hidden_size": 16, "neural_plasticity_rate": 0.01, "neural_plasticity_enabled": True},
+                {"id": "v2", "neural_hidden_size": 8, "neural_plasticity_rate": 0.01, "neural_plasticity_enabled": True},
+                {"id": "v3", "neural_hidden_size": 32, "neural_plasticity_rate": 0.01, "neural_plasticity_enabled": True},
+                {"id": "v4", "neural_hidden_size": 16, "neural_plasticity_rate": 0.0, "neural_plasticity_enabled": False},
+                {"id": "v5", "neural_hidden_size": 16, "neural_plasticity_rate": 0.05, "neural_plasticity_enabled": True},
+            ],
+            "strict_regression_summary": {"m17_regression": "PASS", "m14_m15_m16_regression": "PASS"},
+        }))
+        (Path(tmpdir) / "neural_variant_similarity_matrix.json").write_text(json.dumps({
+            "variant_ids": ["v1", "v2", "v3", "v4", "v5"],
+            "similarity_matrix": {
+                "action_distribution": [[1.0]*5]*5,
+                "neural_state": [[1.0]*5]*5,
+                "runtime_metric": [[1.0]*5]*5,
+            },
+            "nontrivial_off_diagonal_difference_detected": True,
+        }))
+        (Path(tmpdir) / "neural_controller_sensitivity_summary.json").write_text(json.dumps({
+            "sensitivity_score_by_parameter": {"hidden_size": 0.3, "plasticity_rate": 0.5},
+        }))
+        for vid in ["v1", "v2", "v3", "v4", "v5"]:
+            vdir = Path(tmpdir) / "variants" / vid
+            vdir.mkdir(parents=True)
+            (vdir / "neural_processing_summary.json").write_text(json.dumps({"run_ticks": 10000}))
+        if runtime_lines is not None:
+            (Path(tmpdir) / "per_variant_runtime_summary.jsonl").write_text("\n".join(runtime_lines) + "\n")
+
+    def test_fails_when_runtime_summary_missing(self):
+        """Judge must FAIL when per_variant_runtime_summary.jsonl does not exist."""
+        from machine_sim.verification.milestone_18_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_fixture(tmpdir, runtime_lines=None)
+            result = judge(tmpdir)
+            assert result["M18_JUDGE_STATUS"] == "FAIL"
+            assert "per_variant_runtime_check" in result["failed_checks"]
+
+    def test_fails_when_runtime_summary_empty(self):
+        """Judge must FAIL when per_variant_runtime_summary.jsonl is empty."""
+        from machine_sim.verification.milestone_18_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._make_valid_fixture(tmpdir, runtime_lines=[""])
+            result = judge(tmpdir)
+            assert result["M18_JUDGE_STATUS"] == "FAIL"
+            assert "per_variant_runtime_check" in result["failed_checks"]
+
+    def test_fails_when_one_variant_row_missing(self):
+        """Judge must FAIL when one variant has no runtime row."""
+        from machine_sim.verification.milestone_18_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Missing v3
+            lines = [
+                json.dumps({"variant_id": "v1", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v2", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v4", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}),
+                json.dumps({"variant_id": "v5", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}),
+            ]
+            self._make_valid_fixture(tmpdir, runtime_lines=lines)
+            result = judge(tmpdir)
+            assert result["M18_JUDGE_STATUS"] == "FAIL"
+            assert "per_variant_runtime_check" in result["failed_checks"]
+
+    def test_fails_when_variant_below_threshold(self):
+        """Judge must FAIL when a variant has run_ticks below threshold."""
+        from machine_sim.verification.milestone_18_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lines = [
+                json.dumps({"variant_id": "v1", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v2", "run_ticks": 1000, "neural_controller_enabled": True, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v3", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v4", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}),
+                json.dumps({"variant_id": "v5", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}),
+            ]
+            self._make_valid_fixture(tmpdir, runtime_lines=lines)
+            result = judge(tmpdir)
+            assert result["M18_JUDGE_STATUS"] == "FAIL"
+            assert "per_variant_runtime_check" in result["failed_checks"]
+
+    def test_passes_when_all_valid(self):
+        """Judge must PASS when every variant has a valid runtime row meeting thresholds."""
+        from machine_sim.verification.milestone_18_judge import judge
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lines = [
+                json.dumps({"variant_id": "v1", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v2", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v3", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}),
+                json.dumps({"variant_id": "v4", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}),
+                json.dumps({"variant_id": "v5", "run_ticks": 5000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}),
+            ]
+            self._make_valid_fixture(tmpdir, runtime_lines=lines)
+            result = judge(tmpdir)
+            assert result["M18_JUDGE_STATUS"] == "PASS"
+            assert result["checks"]["per_variant_runtime_check"] == "PASS"
+
+
 class TestM18Judge:
     def test_judge_fails_variant_count_too_small(self):
         from machine_sim.verification.milestone_18_judge import judge
@@ -244,7 +345,7 @@ class TestM18Judge:
                 "sensitivity_score_by_parameter": {"hidden_size": 0.5},
             }))
             (Path(tmpdir) / "per_variant_runtime_summary.jsonl").write_text(
-                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
+                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
             )
             result = judge(tmpdir)
             assert result["M18_JUDGE_STATUS"] == "FAIL"
@@ -278,11 +379,11 @@ class TestM18Judge:
                 "sensitivity_score_by_parameter": {"hidden_size": 0.3, "plasticity_rate": 0.5},
             }))
             (Path(tmpdir) / "per_variant_runtime_summary.jsonl").write_text(
-                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v2", "run_ticks": 10000, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v3", "run_ticks": 10000, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v4", "run_ticks": 10000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}) + "\n"
-                + json.dumps({"variant_id": "v5", "run_ticks": 10000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}) + "\n"
+                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v2", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v3", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v4", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}) + "\n"
+                + json.dumps({"variant_id": "v5", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}) + "\n"
             )
             # Create variant dirs with artifacts
             for vid in ["v1", "v2", "v3", "v4", "v5"]:
@@ -338,11 +439,11 @@ class TestM18Judge:
                 "sensitivity_score_by_parameter": {"hidden_size": 0.3, "plasticity_rate": 0.5},
             }))
             (Path(tmpdir) / "per_variant_runtime_summary.jsonl").write_text(
-                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v2", "run_ticks": 10000, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v3", "run_ticks": 10000, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}) + "\n"
-                + json.dumps({"variant_id": "v4", "run_ticks": 10000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}) + "\n"
-                + json.dumps({"variant_id": "v5", "run_ticks": 10000, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}) + "\n"
+                json.dumps({"variant_id": "v1", "run_ticks": 20000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v2", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 8, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v3", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 32, "neural_plasticity_rate": 0.01}) + "\n"
+                + json.dumps({"variant_id": "v4", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.0}) + "\n"
+                + json.dumps({"variant_id": "v5", "run_ticks": 10000, "neural_controller_enabled": True, "neural_hidden_size": 16, "neural_plasticity_rate": 0.05}) + "\n"
             )
             for vid in ["v1", "v2", "v3", "v4", "v5"]:
                 vdir = Path(tmpdir) / "variants" / vid

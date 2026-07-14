@@ -46,7 +46,8 @@
 - `14ab341` — Milestone 17A neural determinism and judge hardening
 - `d6845a4` — Milestone 17B judge strictness and stage closing
 - `d89c1a9` — Milestone 17C stage-closing documentation sync
-- (pending) — Milestone 18 neural controller variant sensitivity
+- `6fe2514` — Milestone 18 neural controller variant sensitivity
+- `7df6e23` — Milestone 18A variant runtime judge and stage-closing
 
 ## Branch Name
 `feature/milestone-1`
@@ -78,7 +79,7 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
 ## M18 Judge Result
 M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
 
-## Full M1-M17 Regression Summary
+## Full M1-M18 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
