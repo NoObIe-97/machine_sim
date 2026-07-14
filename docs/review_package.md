@@ -47,7 +47,7 @@
 - `d6845a4` — Milestone 17B judge strictness and stage closing
 - `d89c1a9` — Milestone 17C stage-closing documentation sync
 - `6fe2514` — Milestone 18 neural controller variant sensitivity
-- `7df6e23` — Milestone 18A variant runtime judge and stage-closing
+- `2f3464d` — Milestone 18A variant runtime judge and stage-closing
 
 ## Branch Name
 `feature/milestone-1`
@@ -56,7 +56,7 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-385 passed in 46.99s
+390 passed in 38.93s
 
 ## Coverage (Final)
 80.02%
@@ -113,7 +113,7 @@ Neural state traces: 110
 Neural plasticity events: 29036
 Neural-vs-scalar: neural 7 active, scalar 6 active
 Judge: 12/12 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 80.02%, 385 tests
+Coverage: 80.02%, 390 tests
 ```
 
 ## M18 Demo Output
@@ -124,7 +124,7 @@ Nontrivial difference detected: yes
 Nontrivial parameter effect detected: yes
 Most sensitive parameter: plasticity_rate
 Judge: 14/14 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 80.02%, 385 tests
+Coverage: 80.02%, 390 tests
 ```
 
 ## Artifact Paths
