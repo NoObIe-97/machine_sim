@@ -58,6 +58,30 @@ class SimConfig:
     neural_hidden_size: int = 16
     neural_plasticity_rate: float = 0.01
 
+    # M19: Architecture variation
+    neural_architecture_variation_enabled: bool = False
+    minimum_hidden_size: int = 8
+    initial_hidden_size: int = 16
+    maximum_hidden_size: int = 64
+    minimum_recurrent_density: float = 0.15
+    initial_recurrent_density: float = 1.0
+    maximum_recurrent_density: float = 1.0
+    minimum_plasticity_rate: float = 0.0
+    maximum_plasticity_rate: float = 0.05
+    initial_architecture_policy: str = "uniform_baseline"
+    hidden_size_variation_probability: float = 0.5
+    hidden_size_variation_max_step: int = 2
+    recurrent_density_variation_probability: float = 0.5
+    recurrent_density_variation_max_step: float = 0.10
+    plasticity_rate_variation_probability: float = 0.3
+    plasticity_rate_variation_max_step: float = 0.005
+    neural_processing_base_cost: float = 0.05
+    neural_hidden_unit_cost: float = 0.002
+    neural_recurrent_connection_cost: float = 0.001
+    neural_plastic_update_cost: float = 0.0005
+    neural_fabrication_hidden_unit_cost: float = 0.5
+    neural_fabrication_connection_cost: float = 0.02
+
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:
         with open(path, "rb") as f:

@@ -77,6 +77,14 @@ class SimEngine:
         self._neural_plasticity_trace: List[Dict[str, Any]] = []
         self._neural_successor_transfer_trace: List[Dict[str, Any]] = []
         self._neural_snapshot_interval = max(1, config.max_ticks // 10)
+        # M19: Architecture variation trace storage
+        self._architecture_transfer_trace: List[Dict[str, Any]] = []
+        self._architecture_distribution_trace: List[Dict[str, Any]] = []
+        self._architecture_cost_trace: List[Dict[str, Any]] = []
+        self._architecture_initial_descriptors: List[Dict[str, Any]] = []
+        self._total_processing_cost: float = 0.0
+        self._total_fabrication_cost: float = 0.0
+        self._architecture_dist_snapshot_interval = max(1, config.max_ticks // 20)
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -330,12 +338,111 @@ class SimEngine:
                                 and successor._neural_controller is not None):
                             import random as _nc_rng
                             nc_rng = _nc_rng.Random(self.tick_count * 7 + stable_seed("nc_transfer", unit.unit_id))
-                            source_nc_state = unit._neural_controller.state.copy()
-                            successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
-                            successor._neural_controller.state = successor_nc_state
-                            # Record neural successor transfer trace
+
+                            # M19: Architecture variation
+                            arch_variation_enabled = self.config.neural_architecture_variation_enabled
+                            source_arch = getattr(unit, '_architecture_descriptor', None)
+                            successor_arch = None
+                            transition_record = None
+
+                            if arch_variation_enabled and source_arch is not None:
+                                from machine_sim.agents.neural_architecture import (
+                                    vary_architecture, NeuralArchitectureConfig,
+                                    resize_state_for_successor, compute_recurrence_mask,
+                                    compute_processing_cost, compute_fabrication_cost,
+                                    NeuralArchitectureTransition,
+                                )
+                                arch_cfg = NeuralArchitectureConfig(
+                                    minimum_hidden_size=self.config.minimum_hidden_size,
+                                    maximum_hidden_size=self.config.maximum_hidden_size,
+                                    minimum_recurrent_density=self.config.minimum_recurrent_density,
+                                    maximum_recurrent_density=self.config.maximum_recurrent_density,
+                                    minimum_plasticity_rate=self.config.minimum_plasticity_rate,
+                                    maximum_plasticity_rate=self.config.maximum_plasticity_rate,
+                                    hidden_size_variation_probability=self.config.hidden_size_variation_probability,
+                                    hidden_size_variation_max_step=self.config.hidden_size_variation_max_step,
+                                    recurrent_density_variation_probability=self.config.recurrent_density_variation_probability,
+                                    recurrent_density_variation_max_step=self.config.recurrent_density_variation_max_step,
+                                    plasticity_rate_variation_probability=self.config.plasticity_rate_variation_probability,
+                                    plasticity_rate_variation_max_step=self.config.plasticity_rate_variation_max_step,
+                                    neural_processing_base_cost=self.config.neural_processing_base_cost,
+                                    neural_hidden_unit_cost=self.config.neural_hidden_unit_cost,
+                                    neural_recurrent_connection_cost=self.config.neural_recurrent_connection_cost,
+                                    neural_plastic_update_cost=self.config.neural_plastic_update_cost,
+                                    neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                                    neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
+                                )
+
+                                successor_arch = vary_architecture(
+                                    source_arch, arch_cfg, nc_rng,
+                                    self.tick_count, index=len(self.units))
+
+                                # Dimension-changing transfer
+                                src_state = unit._neural_controller.state
+                                new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
+                                    resize_state_for_successor(
+                                        src_state.hidden_state, src_state.W_in, src_state.W_rec,
+                                        src_state.W_out, src_state.W_param, src_state.b_hidden,
+                                        src_state.recurrent_mask, successor_arch, source_arch, nc_rng,
+                                        weight_bound=2.0)
+
+                                from machine_sim.agents.neural_controller import NeuralProcessingState
+                                successor_state = NeuralProcessingState(
+                                    hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
+                                    W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
+                                    c_action=list(src_state.c_action),
+                                    c_param=list(src_state.c_param),
+                                    recurrent_mask=new_mask,
+                                )
+                                successor._neural_controller.set_state(successor_state)
+                                successor._architecture_descriptor = successor_arch
+
+                                # Compute costs
+                                fab_cost = compute_fabrication_cost(successor_arch, arch_cfg)
+                                self._total_fabrication_cost += fab_cost
+
+                                # Record architecture transition
+                                old_active = source_arch.active_recurrent_connections()
+                                new_active = successor_arch.active_recurrent_connections()
+                                delta_h = successor_arch.hidden_size - source_arch.hidden_size
+
+                                transition_record = NeuralArchitectureTransition(
+                                    tick=self.tick_count,
+                                    source_unit_id=unit.unit_id,
+                                    successor_unit_id=result.successor_id,
+                                    source_generation=getattr(unit, '_generation_index', 0),
+                                    successor_generation=successor._generation_index,
+                                    source_architecture_id=source_arch.architecture_id,
+                                    successor_architecture_id=successor_arch.architecture_id,
+                                    source_hidden_size=source_arch.hidden_size,
+                                    successor_hidden_size=successor_arch.hidden_size,
+                                    hidden_size_delta=delta_h,
+                                    source_recurrent_density=source_arch.recurrent_density,
+                                    successor_recurrent_density=successor_arch.recurrent_density,
+                                    recurrent_density_delta=successor_arch.recurrent_density - source_arch.recurrent_density,
+                                    source_plasticity_rate=source_arch.plasticity_rate,
+                                    successor_plasticity_rate=successor_arch.plasticity_rate,
+                                    plasticity_rate_delta=successor_arch.plasticity_rate - source_arch.plasticity_rate,
+                                    retained_hidden_count=len(retained),
+                                    added_hidden_count=max(0, delta_h),
+                                    removed_hidden_count=max(0, -delta_h),
+                                    active_recurrent_connection_delta=new_active - old_active,
+                                    processing_cost_estimate=compute_processing_cost(successor_arch, arch_cfg),
+                                    fabrication_complexity_cost=fab_cost,
+                                    variation_applied=True,
+                                )
+                                self._architecture_transfer_trace.append(transition_record.to_dict())
+                            else:
+                                # Legacy transfer (no architecture variation)
+                                source_nc_state = unit._neural_controller.state.copy()
+                                successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
+                                successor._neural_controller.state = successor_nc_state
+
+                            # Record neural successor transfer trace (always)
+                            source_nc = unit._neural_controller.state
+                            succ_nc = successor._neural_controller.state
                             if self.config.long_run_adaptation_enabled:
-                                param_delta = unit._neural_controller.get_parameter_delta(successor_nc_state)
+                                param_delta = unit._neural_controller.get_parameter_delta(succ_nc)
                                 self._neural_successor_transfer_trace.append({
                                     "tick": self.tick_count,
                                     "source_unit_id": unit.unit_id,
@@ -343,10 +450,10 @@ class SimEngine:
                                     "source_generation": getattr(unit, '_generation_index', 0),
                                     "successor_generation": successor._generation_index,
                                     "source_hidden_summary": {
-                                        "mean": round(sum(source_nc_state.hidden_state) / len(source_nc_state.hidden_state), 6) if source_nc_state.hidden_state else 0.0,
+                                        "mean": round(sum(source_nc.hidden_state) / len(source_nc.hidden_state), 6) if source_nc.hidden_state else 0.0,
                                     },
                                     "successor_hidden_summary": {
-                                        "mean": round(sum(successor_nc_state.hidden_state) / len(successor_nc_state.hidden_state), 6) if successor_nc_state.hidden_state else 0.0,
+                                        "mean": round(sum(succ_nc.hidden_state) / len(succ_nc.hidden_state), 6) if succ_nc.hidden_state else 0.0,
                                     },
                                     "parameter_delta": param_delta,
                                     "transfer_variation": 0.05,
@@ -743,6 +850,37 @@ class SimEngine:
                                 "selected_action": unit._previous_action_name,
                             })
 
+                    # M19: Deduct architecture-dependent processing cost
+                    if (self.config.neural_architecture_variation_enabled
+                            and hasattr(unit, '_architecture_descriptor')
+                            and unit._architecture_descriptor is not None):
+                        from machine_sim.agents.neural_architecture import (
+                            compute_processing_cost, NeuralArchitectureConfig,
+                        )
+                        arch_cfg_cost = NeuralArchitectureConfig(
+                            neural_processing_base_cost=self.config.neural_processing_base_cost,
+                            neural_hidden_unit_cost=self.config.neural_hidden_unit_cost,
+                            neural_recurrent_connection_cost=self.config.neural_recurrent_connection_cost,
+                            neural_plastic_update_cost=self.config.neural_plastic_update_cost,
+                        )
+                        proc_cost = compute_processing_cost(
+                            unit._architecture_descriptor, arch_cfg_cost,
+                            changed_parameter_count=0)
+                        unit.power_reserve = max(0.0, unit.power_reserve - proc_cost)
+                        self._total_processing_cost += proc_cost
+
+                        # Record cost trace (sampled)
+                        if (self.config.long_run_adaptation_enabled
+                                and self.tick_count % 100 == 0
+                                and len(self._architecture_cost_trace) < 5000):
+                            self._architecture_cost_trace.append({
+                                "tick": self.tick_count,
+                                "unit_id": unit.unit_id,
+                                "processing_cost": round(proc_cost, 6),
+                                "hidden_size": unit._architecture_descriptor.hidden_size,
+                                "recurrent_density": round(unit._architecture_descriptor.recurrent_density, 6),
+                            })
+
         # Record adaptive state snapshots at intervals for long-run trace
         if self.config.long_run_adaptation_enabled and self.tick_count % self._adaptive_snapshot_interval == 0:
             for unit in self.units:
@@ -766,6 +904,33 @@ class SimEngine:
                         "unit_id": unit.unit_id,
                         **snap,
                     })
+
+        # M19: Record architecture distribution snapshots
+        if (self.config.neural_architecture_variation_enabled
+                and self.config.long_run_adaptation_enabled
+                and self.tick_count % self._architecture_dist_snapshot_interval == 0):
+            from collections import Counter
+            active_units = [u for u in self.units if u.is_active
+                           and hasattr(u, '_architecture_descriptor')
+                           and u._architecture_descriptor is not None]
+            if active_units:
+                hidden_sizes = [u._architecture_descriptor.hidden_size for u in active_units]
+                densities = [u._architecture_descriptor.recurrent_density for u in active_units]
+                rates = [u._architecture_descriptor.plasticity_rate for u in active_units]
+                hs_hist = dict(Counter(hidden_sizes))
+                d_hist = {round(k, 2): v for k, v in Counter(densities).items()}
+                r_hist = {round(k, 4): v for k, v in Counter(rates).items()}
+                self._architecture_distribution_trace.append({
+                    "tick": self.tick_count,
+                    "active_unit_count": len(active_units),
+                    "distinct_architecture_count": len(set(
+                        u._architecture_descriptor.architecture_id for u in active_units)),
+                    "hidden_size_histogram": hs_hist,
+                    "recurrent_density_histogram": d_hist,
+                    "plasticity_rate_histogram": r_hist,
+                    "mean_hidden_size": round(sum(hidden_sizes) / len(hidden_sizes), 2),
+                    "mean_recurrent_density": round(sum(densities) / len(densities), 4),
+                })
 
     def get_neural_processing_summary(self) -> Dict[str, Any]:
         """Get neural processing summary for artifact output."""

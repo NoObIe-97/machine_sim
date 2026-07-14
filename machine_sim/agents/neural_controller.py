@@ -75,9 +75,10 @@ class NeuralProcessingState:
     b_hidden: List[float] = field(default_factory=list)
     c_action: List[float] = field(default_factory=list)
     c_param: List[float] = field(default_factory=list)
+    recurrent_mask: Optional[List[List[float]]] = field(default=None)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d: Dict[str, Any] = {
             "hidden_state": [round(v, 6) for v in self.hidden_state],
             "W_in": [[round(v, 6) for v in row] for row in self.W_in],
             "W_rec": [[round(v, 6) for v in row] for row in self.W_rec],
@@ -87,9 +88,14 @@ class NeuralProcessingState:
             "c_action": [round(v, 6) for v in self.c_action],
             "c_param": [round(v, 6) for v in self.c_param],
         }
+        if self.recurrent_mask is not None:
+            d["recurrent_mask"] = [[int(v) for v in row] for row in self.recurrent_mask]
+        return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> NeuralProcessingState:
+        mask_data = d.get("recurrent_mask")
+        mask = [[float(v) for v in row] for row in mask_data] if mask_data else None
         return cls(
             hidden_state=list(d.get("hidden_state", [])),
             W_in=[list(row) for row in d.get("W_in", [])],
@@ -99,6 +105,7 @@ class NeuralProcessingState:
             b_hidden=list(d.get("b_hidden", [])),
             c_action=list(d.get("c_action", [])),
             c_param=list(d.get("c_param", [])),
+            recurrent_mask=mask,
         )
 
     def copy(self) -> NeuralProcessingState:
@@ -111,7 +118,22 @@ class NeuralProcessingState:
             b_hidden=list(self.b_hidden),
             c_action=list(self.c_action),
             c_param=list(self.c_param),
+            recurrent_mask=[list(row) for row in self.recurrent_mask] if self.recurrent_mask is not None else None,
         )
+
+    def active_recurrent_count(self) -> int:
+        """Count active recurrent connections."""
+        if self.recurrent_mask is None:
+            return len(self.W_rec) * len(self.W_rec) if self.W_rec else 0
+        return sum(int(v) for row in self.recurrent_mask for v in row)
+
+    def recurrent_density(self) -> float:
+        """Current recurrent density."""
+        n = len(self.hidden_state)
+        total = n * n
+        if total == 0:
+            return 0.0
+        return self.active_recurrent_count() / total
 
 
 class NeuralController:
@@ -198,6 +220,14 @@ class NeuralController:
     def _vecadd(self, a: List[float], b: List[float]) -> List[float]:
         return [a[i] + b[i] for i in range(len(a))]
 
+    def _masked_matvec(self, W: List[List[float]], x: List[float],
+                       mask: Optional[List[List[float]]] = None) -> List[float]:
+        """Matrix-vector multiply with optional mask: (W * mask) @ x."""
+        if mask is None:
+            return self._matvec(W, x)
+        return [sum(W[i][j] * mask[i][j] * x[j] for j in range(len(x)))
+                for i in range(len(W))]
+
     def forward(self, sensor_input: List[float]) -> Tuple[List[float], List[float], List[float], List[float]]:
         """Forward pass through the neural controller.
 
@@ -210,9 +240,9 @@ class NeuralController:
         s = self.state
         cfg = self.config
 
-        # h_t = tanh(W_in @ x + W_rec @ h_prev + b_hidden)
+        # h_t = tanh(W_in @ x + (W_rec * mask) @ h_prev + b_hidden)
         h_in = self._matvec(s.W_in, sensor_input)
-        h_rec = self._matvec(s.W_rec, s.hidden_state)
+        h_rec = self._masked_matvec(s.W_rec, s.hidden_state, s.recurrent_mask)
         h_combined = self._vecadd(self._vecadd(h_in, h_rec), s.b_hidden)
         new_hidden = [_tanh(v) for v in h_combined]
 
@@ -345,6 +375,18 @@ class NeuralController:
                      for v in s.c_param]
 
         return s
+
+    def set_state(self, new_state: NeuralProcessingState) -> None:
+        """Replace the internal state (used after dimension-changing transfer)."""
+        self.state = new_state
+        # Update config hidden_size to match
+        self.config.hidden_size = len(new_state.hidden_state)
+        self.config.output_size = len(new_state.W_out) if new_state.W_out else self.config.output_size
+        self.config.param_output_size = len(new_state.W_param) if new_state.W_param else self.config.param_output_size
+
+    def set_recurrent_mask(self, mask: List[List[float]]) -> None:
+        """Set the recurrent connection mask."""
+        self.state.recurrent_mask = mask
 
     def get_state_snapshot(self) -> Dict[str, Any]:
         """Snapshot the current neural state for trace writing."""

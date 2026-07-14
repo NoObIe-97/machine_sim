@@ -27,6 +27,10 @@ from machine_sim.analysis.adaptive import (
 )
 from machine_sim.agents.adaptive_control import AdaptiveController, AdaptiveStateVector
 from machine_sim.agents.neural_controller import NeuralController, NeuralProcessingConfig, stable_seed
+from machine_sim.agents.neural_architecture import (
+    NeuralArchitectureDescriptor,
+    compute_recurrence_mask,
+)
 
 
 class MachineUnitImpl(MachineUnit):
@@ -50,6 +54,7 @@ class MachineUnitImpl(MachineUnit):
         neural_hidden_size: int = 16,
         neural_plasticity_rate: float = 0.01,
         neural_seed: int = 42,
+        neural_architecture_descriptor: Optional[NeuralArchitectureDescriptor] = None,
     ) -> None:
         self.variant = variant or ALL_VARIANTS[0]
         self.signal_enabled = signal_enabled
@@ -70,13 +75,29 @@ class MachineUnitImpl(MachineUnit):
         self._neural_controller_mode = neural_controller_mode
         self._previous_action_name = "IDLE"
         self._neural_controller: Optional[NeuralController] = None
+        self._architecture_descriptor = neural_architecture_descriptor
         if neural_controller_enabled:
+            # Use architecture descriptor values if provided
+            h_size = neural_hidden_size
+            p_rate = neural_plasticity_rate
+            p_enabled = neural_plasticity_enabled
+            if neural_architecture_descriptor is not None:
+                h_size = neural_architecture_descriptor.hidden_size
+                p_rate = neural_architecture_descriptor.plasticity_rate
+                p_enabled = neural_architecture_descriptor.plasticity_enabled
             nc_cfg = NeuralProcessingConfig(
-                hidden_size=neural_hidden_size,
-                plasticity_rate=neural_plasticity_rate,
-                plasticity_enabled=neural_plasticity_enabled,
+                hidden_size=h_size,
+                plasticity_rate=p_rate,
+                plasticity_enabled=p_enabled,
             )
             self._neural_controller = NeuralController(config=nc_cfg, unit_id=unit_id, seed=neural_seed)
+            # Apply recurrent mask if architecture descriptor specifies density < 1.0
+            if (neural_architecture_descriptor is not None
+                    and neural_architecture_descriptor.recurrent_density < 1.0):
+                mask_rng = random.Random(stable_seed("mask_init", unit_id, neural_seed))
+                mask = compute_recurrence_mask(
+                    h_size, neural_architecture_descriptor.recurrent_density, mask_rng)
+                self._neural_controller.set_recurrent_mask(mask)
         self._generation_index = 0
         self._lifetime_ticks = 0
         self._action_counts: Dict[str, int] = {}

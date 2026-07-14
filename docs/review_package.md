@@ -48,6 +48,8 @@
 - `d89c1a9` — Milestone 17C stage-closing documentation sync
 - `6fe2514` — Milestone 18 neural controller variant sensitivity
 - `2f3464d` — Milestone 18A variant runtime judge and stage-closing
+- `448d223` — Milestone 18B stage-closing documentation sync
+- (pending) — Milestone 19 successor-transferred neural architecture variation
 
 ## Branch Name
 `feature/milestone-1`
@@ -56,7 +58,7 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-390 passed in 38.93s
+417 passed in 50.60s
 
 ## Coverage (Final)
 80.02%
@@ -78,6 +80,9 @@ M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
 
 ## M18 Judge Result
 M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
+
+## M19 Judge Result
+M19_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only)
 
 ## Full M1-M18 Regression Summary
 
@@ -101,6 +106,7 @@ M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
 | M16 | 6 source records, 3 compressed segments, ratio 0.695, replay stable, 12/12 judge PASS |
 | M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 29036 plasticity events, 12/12 judge PASS |
 | M18 | 6 variants, nontrivial sensitivity detected, 14/14 judge PASS |
+| M19 | architecture variation, dimension-changing transfer, 21/21 judge PASS |
 
 ## M17 Demo Output
 
