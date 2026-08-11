@@ -51,7 +51,8 @@
 - `448d223` — Milestone 18B stage-closing documentation sync
 - `f1c4de1` — Milestone 19 successor-transferred neural architecture variation
 - `d9bd3bf` — Milestone 19 demo artifact and determinism fixes
-- `PENDING_M20_COMMIT` — Milestone 20 user-owned unattended run control
+- `275befc` — Milestone 20 user-owned unattended run control
+- `PLACEHOLDER_M20A` — Milestone 20A stage-closing documentation sync
 
 ## Branch Name
 `feature/milestone-1`
