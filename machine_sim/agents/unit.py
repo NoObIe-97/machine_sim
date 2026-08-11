@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from typing import Dict, List, Optional, Tuple
 
 from machine_sim.agents.base import (

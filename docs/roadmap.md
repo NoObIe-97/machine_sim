@@ -20,7 +20,6 @@
 - Signal decay and expiration
 - Signal sensing by nearby units (source excluded from own signal)
 - Energy cost for emission
-- Machine-native event logging
 - Deterministic replay
 
 ## Milestone 4: Signal Correlation and Statistical Association ✓
@@ -29,71 +28,105 @@
 - Per-pattern co-occurrence statistics
 - Engine integration with correlation recording
 - CLI correlation summary output
-- Signal energy cost wiring fix
 
 ## Milestone 5: Adaptive Signal Response ✓
 - LocalFieldTracker with bounded window statistics
 - AdaptiveEmissionPolicy (interval, intensity, radius, pattern selection)
 - AdaptiveScanPolicy (scan cadence)
-- Improved association scores (lag-weighted, confidence, normalized rate)
+- Lag-weighted association scores with confidence and normalized rate
 - Engine integration with adaptive behavior tracking
-- CLI adaptive summary output
-- signal_energy_cost wiring fix
 
-## Milestone 6: Reproduction and Design Inheritance ✓
+## Milestone 6: Fabricated Descent and Design Inheritance ✓
 - FabricationEngine with resource/placement constraints
 - DesignTemplate with bounded variation
 - LineageRecord tracking
-- Population cap and dynamics
+- Unit capacity and lineage dynamics
 - FABRICATION_SUCCEEDED/FAILED events
-- Fabrication summary artifacts
 
-## Milestone 7: Calibration Assist and Knowledge Transfer ✓
+## Milestone 7: Calibration Assist and Parameter Transfer ✓
 - CalibrationCapsule with bounded source/world statistics
 - CapsuleGenerator for deterministic capsule creation
 - Warm-start application to successor units
 - CapsuleManager for storage and summary
-- Capsule artifact output (capsules.json)
-- 8 new tests for capsule mechanics
 
-## Milestone 8: Distributed Operational Memory
-- Persistent memory across ticks
-- Memory sharing via physical proximity
-- Distributed consensus primitives
-- Memory corruption and repair
+## Milestone 8: Distributed Operational Telemetry ✓
+- Persistent telemetry frames across ticks
+- Proximity-based reconciliation
+- Divergence and continuity metrics
+- Lineage drift tracking
 
-## Milestone 5: Reproduction and Design Inheritance
-- Unit replication (copy parameters + noise)
-- Offspring placement
-- Design inheritance with variation
-- Population dynamics
+## Milestone 9: Resource Pressure Analysis ✓
+- Resource pressure cells and depletion rate
+- Extraction load and peak cell load
+- Proximity pressure and blocked-motion rate
+- Field perturbation scoring
 
-## Milestone 6: Mutation and Lineage Divergence
-- Parameter mutation during replication
-- Lineage tracking
-- Fitness-proportional selection pressure
-- Lineage divergence and specialization
+## Milestone 10: Signal Pattern Field Dynamics ✓
+- Pattern-indexed field dynamics
+- Signal clustering and gradient exposure
+- Observer-level interpretation surface
 
-## Milestone 7: Calibration Assist and Knowledge Transfer
-- Parent-like parameter calibration for offspring
-- Experience capsule transfer
-- Calibration refinement through feedback loops
-- Knowledge accumulation across generations
+## Milestone 11: Bounded Operational Trace Compression ✓
+- TraceCompressor with bounded segment count
+- Compression ratio reporting
+- Replay-stable compressed segments
 
-## Milestone 8: Distributed Operational Memory
-- Persistent memory across ticks
-- Memory sharing via physical proximity
-- Distributed consensus primitives
-- Memory corruption and repair
+## Milestone 12: Multi-Generation Trace Drift and Compression Stability ✓
+- Generation-indexed trace drift
+- Capsule compatibility across generations
+- Compression stability under drift
 
-## Milestone 9: Conflict/Cooperation Experiments
-- Multi-unit resource competition scenarios
-- Cooperative resource extraction
-- Deception-like signaling
-- Alliance-like coordination patterns
+## Milestone 13: Compressed Summary Cross-Unit Consistency ✓
+- Cross-unit consistency scoring
+- Combined stability score
+- Summary consistency analyzer
 
-## Milestone 10: Observer-Level Affect Interpretation
-- Observer-level interpretation engine
-- Civilization pattern detection
-- Emergent behavior classification
-- Long-horizon experiment suite and replay analysis
+## Milestone 14: Long-Run Internal Adaptive Control ✓
+- 20000-tick 120x120 adaptive control runs
+- AdaptiveController with local feedback
+- Long-run adaptation summary and exact-PASS judge
+
+## Milestone 15: Multi-Generation Adaptive Trace Evolution ✓
+- Adaptive state transfer to successors
+- Generation span tracking
+- Descendant adaptive state traces
+
+## Milestone 16: Adaptive Trajectory Compression and Offline Analysis ✓
+- Adaptive trajectory compression with bounded segments
+- Replay-stable offline analysis
+- Compression ratio 0.695 on the primary run
+
+## Milestone 17: Internal Neural Processing Unit ✓
+- Compact recurrent controller with local plasticity
+- Deterministic seeding through stable_seed()
+- Neural-versus-scalar comparison
+- Strict exact-PASS-only judging (M17A, M17B)
+
+## Milestone 18: Neural Controller Variant Sensitivity ✓
+- 6-variant controller sweep
+- Variant similarity matrix
+- Controller parameter sensitivity summary
+- Per-variant runtime validation (M18A)
+
+## Milestone 19: Successor-Transferred Neural Architecture Variation ✓
+- Per-unit neural architecture descriptors
+- Bounded successor architecture variation
+- Dimension-changing neural-state transfer
+- Sparse recurrent connection masks
+- Architecture-dependent processing and fabrication cost
+- Fixed-versus-variable architecture comparison
+
+## Milestone 20: User-Owned Unattended Run Control ✓
+- Schema-versioned run lifecycle manifest with atomic writes
+- Deterministic dependency-free checkpoint capture and restore
+- Checkpoint integrity digests and an explicit validator
+- File-based user-owned control channel (pause, stop)
+- Resume from checkpoint in a separate process
+- Per-tick digest chain and continuation-equivalence verification
+- Read-only local status surface and artifact location index
+
+## Milestone 21: Unattended Multi-Hour Architecture Run (next)
+- Multi-hour architecture run over the M20 checkpoint substrate
+- Interruption and resumption across long wall-clock spans
+- Post-run trajectory analysis over retained checkpoints
+- Bounded artifact growth over extended runs

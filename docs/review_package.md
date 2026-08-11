@@ -1,4 +1,4 @@
-# Milestone 18 Final Review Package
+# Milestone 20 Final Review Package
 
 ## Commit History
 
@@ -49,7 +49,9 @@
 - `6fe2514` — Milestone 18 neural controller variant sensitivity
 - `2f3464d` — Milestone 18A variant runtime judge and stage-closing
 - `448d223` — Milestone 18B stage-closing documentation sync
-- `f1c4de1` — Milestone 19 successor-transferred neural architecture variation (with demo fixes)
+- `f1c4de1` — Milestone 19 successor-transferred neural architecture variation
+- `d9bd3bf` — Milestone 19 demo artifact and determinism fixes
+- `PENDING_M20_COMMIT` — Milestone 20 user-owned unattended run control
 
 ## Branch Name
 `feature/milestone-1`
@@ -58,10 +60,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-417 passed in 52.76s
+521 passed in 45.43s
 
 ## Coverage (Final)
-77.72%
+77.94%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -84,7 +86,10 @@ M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
 ## M19 Judge Result
 M19_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only)
 
-## Full M1-M18 Regression Summary
+## M20 Judge Result
+M20_JUDGE_STATUS: PASS (24/24 checks passed, 0 SKIP, strict exact-PASS-only)
+
+## Full M1-M20 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -107,52 +112,66 @@ M19_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only)
 | M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 29036 plasticity events, 12/12 judge PASS |
 | M18 | 6 variants, nontrivial sensitivity detected, 14/14 judge PASS |
 | M19 | architecture variation, dimension-changing transfer, 21/21 judge PASS |
+| M20 | 20000 ticks, pause at 8100, resumed span 11900, digests equal, 24/24 judge PASS |
 
-## M17 Demo Output
-
-```
-20000 ticks, 120x120 grid, 6 initial units, seed=42
-Active units: 7 (6 initial + 1 fabricated)
-Fabrication: 5 successes, 5 neural successor transfers
-Signal: 335 emissions, 17323 observations
-Neural state traces: 110
-Neural plasticity events: 29036
-Neural-vs-scalar: neural 7 active, scalar 6 active
-Judge: 12/12 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 80.02%, 390 tests
-```
-
-## M18 Demo Output
+## M19 Demo Output
 
 ```
-6 variants: 1 scalar baseline + 5 neural variants
-Nontrivial difference detected: yes
-Nontrivial parameter effect detected: yes
-Most sensitive parameter: plasticity_rate
-Judge: 14/14 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 80.02%, 390 tests
+40000 ticks, 120x120 grid, 8 initial units, seed=42
+Architecture variation enabled, dimension-changing successor transfer
+Increase and decrease transitions both observed
+Fixed-versus-variable comparison: nontrivial architecture variation detected
+Judge: 21/21 PASS, 0 SKIP (strict exact-PASS-only)
+```
+
+## M20 Demo Output
+
+```
+20000 ticks, 120x120 grid, 8 initial units, seed=42
+Uninterrupted reference run: completed at tick 20000
+Controlled run: user pause request applied at tick 8100, checkpoint written
+Resume: separate process, restored from checkpoint, completed at tick 20000
+Stop: separate short run, stop request applied, run state stopped at tick 100
+Checkpoints: 11 written, 6 retained, 5 pruned, max 28790329 bytes
+Checkpoint validation: 6 pass, 0 fail
+Continuation equivalence: reference and resumed run digests identical
+  c836def339a2c1aebf9d4ba741d175828e2799b8345a032cbf68ab801986b4b5
+Sampled tick digests compared: 40 (24 after the resume point), 0 mismatches
+Status surface read-only: yes. Status page self-contained: yes.
+Judge: 24/24 PASS, 0 SKIP (strict exact-PASS-only)
+Coverage: 77.94%, 521 tests
 ```
 
 ## Artifact Paths
-- `output/demo_m17/neural_processing_summary.json`
-- `output/demo_m17/neural_state_trace.jsonl`
-- `output/demo_m17/neural_action_trace.jsonl`
-- `output/demo_m17/neural_plasticity_trace.jsonl`
-- `output/demo_m17/neural_successor_transfer_trace.jsonl`
-- `output/demo_m17/neural_vs_scalar_compare.json`
-- `output/demo_m17/resource_hazard_field_summary.json`
+
+- `output/demo_m20/run_manifest.json`
+- `output/demo_m20/run_progress_trace.jsonl`
+- `output/demo_m20/checkpoints/checkpoint_index.json`
+- `output/demo_m20/control/control_history.jsonl`
+- `output/demo_m20/checkpoint_validation_report.json`
+- `output/demo_m20/resume_equivalence_report.json`
+- `output/demo_m20/unattended_run_summary.json`
+- `output/demo_m20/run_status_snapshot.json`
+- `output/demo_m20/run_dashboard.html`
+- `output/demo_m20/artifact_index.json`
+- `output/demo_m20/milestone_20_judge_result.json`
+- `output/demo_m20/reference_run/run_manifest.json`
+- `output/demo_m20/stop_run/run_manifest.json`
+- `output/demo_m19/neural_architecture_run_summary.json`
+- `output/demo_m19/neural_architecture_transfer_trace.jsonl`
+- `output/demo_m19/neural_architecture_lineage_summary.json`
+- `output/demo_m19/fixed_vs_variable_architecture_compare.json`
 - `output/demo_m18/neural_variant_sweep_summary.json`
-- `output/demo_m18/neural_variant_similarity_matrix.json`
 - `output/demo_m18/neural_controller_sensitivity_summary.json`
-- `output/demo_m18/per_variant_runtime_summary.jsonl`
-- `output/demo_m18/per_variant_neural_summary.jsonl`
 - `output/demo_m18/milestone_18_judge_result.json`
-- `output/demo_m17/neural_controller_config.json`
-- `output/demo_m17/neural_parameter_snapshot_initial.json`
-- `output/demo_m17/neural_parameter_snapshot_final.json`
+- `output/demo_m17/neural_processing_summary.json`
+- `output/demo_m17/neural_vs_scalar_compare.json`
 - `output/demo_m17/milestone_17_judge_result.json`
 
 ## Report Paths
+
+- `docs/milestone_20_report.md`
+- `docs/milestone_19_report.md`
 - `docs/milestone_18_report.md`
 - `docs/milestone_17_report.md`
 - `docs/milestone_16_report.md`

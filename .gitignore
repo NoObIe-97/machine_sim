@@ -8,3 +8,8 @@ build/
 .coverage
 output/
 *.egg
+
+# Local tooling and scratch scripts, not project deliverables
+.mimocode/
+_bench*.py
+_run_m*.py

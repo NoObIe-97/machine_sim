@@ -33,9 +33,31 @@ Tick-based loop with phases per tick:
 - Proximity detection: units detect nearby unit IDs within sensor range
 - Signal emission and sensing: units emit and observe physical signal pulses
 
+### Run Control (`sim/run_control.py`, `sim/checkpoint.py`)
+- Schema-versioned run lifecycle manifest with atomic writes and a restricted
+  state machine (`initialized → running → paused | stopped | completed | failed`)
+- Deterministic checkpoint capture of the live engine object graph: standard
+  library only, JSON rather than a binary stream, shared references preserved,
+  and object reconstruction limited to a `machine_sim.` module allowlist
+- Checkpoint integrity digests, an explicit validator, and bounded retention
+- File-based user-owned control channel polled on a configured tick interval;
+  a pause or stop request writes a checkpoint and records the transition
+- Per-tick digest chain derived from live state, checkpointed and restored, so a
+  resumed run can be compared against an uninterrupted reference run
+- The append-only event store is an output artifact rather than tick-loop state
+  and is not restored; its per-label counts are recorded in each checkpoint
+
+### Status Surface (`analysis/run_status.py`)
+- Strictly read-only rendering of the manifest, checkpoint index, control
+  history, and artifact locations
+- Text rendering plus a self-contained local page with no external reference
+
 ### Guardrails (`guardrails/`)
 - Three-layer defense: lexical scan, AST check, runtime validation
 - Prevents anthropomorphic leakage into runtime logic
 
 ### CLI (`cli/`)
-- `run`, `inspect`, `check` commands
+- `run`, `inspect`, `check`, `compress`, `compare`, `capsule-compare`,
+  `variant-sweep` commands
+- Run control: `run --run-control`, `run --resume-from`, `run-control`,
+  `run-status`, `checkpoint-validate`, `unattended-demo`

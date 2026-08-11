@@ -82,6 +82,16 @@ class SimConfig:
     neural_fabrication_hidden_unit_cost: float = 0.5
     neural_fabrication_connection_cost: float = 0.02
 
+    # M20: Run lifecycle control
+    run_control_enabled: bool = False
+    checkpoint_enabled: bool = False
+    checkpoint_interval: int = 1000
+    checkpoint_retention_limit: int = 6
+    control_poll_interval: int = 100
+    run_progress_interval: int = 500
+    run_digest_enabled: bool = False
+    run_status_surface_enabled: bool = False
+
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:
         with open(path, "rb") as f:

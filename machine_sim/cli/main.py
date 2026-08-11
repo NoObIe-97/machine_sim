@@ -25,23 +25,19 @@ def cli() -> None:
     pass
 
 
-@cli.command()
-@click.option("--config", "-c", type=click.Path(exists=True), default="configs/milestone_1.toml")
-@click.option("--ticks", "-t", type=int, default=None)
-@click.option("--seed", "-s", type=int, default=None)
-@click.option("--output", "-o", type=click.Path(), default=None)
-@click.option("--verbose", "-v", is_flag=True)
-def run(config: str, ticks: int | None, seed: int | None, output: str | None, verbose: bool) -> None:
-    """Run a simulation."""
-    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
+def build_engine(cfg: SimConfig) -> SimEngine:
+    """Construct an engine and register its initial units for a configuration.
 
-    cfg = SimConfig.from_toml(Path(config))
-    if ticks is not None:
-        cfg.max_ticks = ticks
-    if seed is not None:
-        cfg.seed = seed
-
+    Both the ordinary run path and the M20 run-control paths use this builder,
+    so a controlled run and an uninterrupted reference run start from an
+    identical construction sequence.
+    """
     engine = SimEngine(cfg, seed=cfg.seed)
+    _register_initial_units(engine, cfg)
+    return engine
+
+
+def _register_initial_units(engine: SimEngine, cfg: SimConfig) -> None:
     rng = random.Random(cfg.seed)
 
     # For long-run adaptation, cluster initial units for signal proximity
@@ -113,10 +109,61 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None, ve
                 comp.degradation_rate *= cfg.component_degradation_scale
         engine.register_unit(unit)
 
-    click.echo(f"Starting simulation: {cfg.grid_width}x{cfg.grid_height}, "
-               f"{cfg.unit_count} units, {cfg.max_ticks} ticks, seed={cfg.seed}")
 
-    state = engine.run()
+@cli.command()
+@click.option("--config", "-c", type=click.Path(exists=True), default="configs/milestone_1.toml")
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--seed", "-s", type=int, default=None)
+@click.option("--output", "-o", type=click.Path(), default=None)
+@click.option("--verbose", "-v", is_flag=True)
+@click.option("--run-control", is_flag=True,
+              help="Drive the run through the M20 lifecycle controller.")
+@click.option("--checkpoint-interval", type=int, default=None,
+              help="Tick spacing between checkpoints when run control is active.")
+@click.option("--resume-from", type=click.Path(exists=True), default=None,
+              help="Resume a controlled run from a checkpoint file.")
+def run(config: str, ticks: int | None, seed: int | None, output: str | None,
+        verbose: bool, run_control: bool, checkpoint_interval: int | None,
+        resume_from: str | None) -> None:
+    """Run a simulation."""
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
+
+    cfg = SimConfig.from_toml(Path(config))
+    if ticks is not None:
+        cfg.max_ticks = ticks
+    if seed is not None:
+        cfg.seed = seed
+
+    use_run_control = run_control or cfg.run_control_enabled
+    if (use_run_control or resume_from) and not output:
+        raise click.UsageError("run control requires --output")
+
+    if resume_from:
+        from machine_sim.sim.run_control import resume_controller
+        controller = resume_controller(Path(output), Path(resume_from), cfg.max_ticks)
+        engine = controller.engine
+        click.echo(f"Resumed run {controller.manifest.run_id} at tick {engine.tick_count}")
+        final_state = controller.advance()
+        controller.finalize_artifact_index()
+        click.echo(f"Run state: {final_state} at tick {engine.tick_count}")
+        state = engine.snapshot()
+    else:
+        engine = build_engine(cfg)
+        click.echo(f"Starting simulation: {cfg.grid_width}x{cfg.grid_height}, "
+                   f"{cfg.unit_count} units, {cfg.max_ticks} ticks, seed={cfg.seed}")
+        if use_run_control:
+            from machine_sim.sim.run_control import RunController
+            controller = RunController(
+                engine, Path(output), checkpoint_interval=checkpoint_interval,
+                checkpoint_enabled=True, run_digest_enabled=True,
+            )
+            controller.start()
+            final_state = controller.advance()
+            controller.finalize_artifact_index()
+            click.echo(f"Run state: {final_state} at tick {engine.tick_count}")
+            state = engine.snapshot()
+        else:
+            state = engine.run()
 
     active = sum(1 for a in state.agents if a.is_active)
     click.echo(f"Simulation complete. Tick {state.tick}/{cfg.max_ticks}")
@@ -1398,6 +1445,367 @@ def variant_sweep(config: str, output: str) -> None:
     click.echo(f"Nontrivial difference detected: {sim_matrix['nontrivial_off_diagonal_difference_detected']}")
     click.echo(f"Nontrivial parameter effect detected: {sensitivity['nontrivial_controller_parameter_effect_detected']}")
     click.echo(f"Artifacts written to {outpath}")
+
+
+@cli.command("run-control")
+@click.argument("output_dir", type=click.Path(exists=True))
+@click.option("--request", "-r", type=click.Choice(["pause", "stop"]), required=True)
+@click.option("--request-id", type=str, default=None)
+def run_control(output_dir: str, request: str, request_id: str | None) -> None:
+    """Write a user-owned control request into a run output directory."""
+    from machine_sim.sim.run_control import ControlChannel
+
+    channel = ControlChannel(Path(output_dir))
+    record = channel.write_request(request, request_id)
+    click.echo(f"Control request written: {record['requested_state']} ({record['request_id']})")
+    click.echo(f"  path: {channel.request_path}")
+
+
+@cli.command("run-status")
+@click.argument("output_dir", type=click.Path(exists=True))
+@click.option("--snapshot", type=click.Path(), default=None,
+              help="Write the status snapshot to this path.")
+@click.option("--page", type=click.Path(), default=None,
+              help="Write the self-contained status page to this path.")
+def run_status(output_dir: str, snapshot: str | None, page: str | None) -> None:
+    """Print the read-only status surface for a run output directory."""
+    from machine_sim.analysis.run_status import render_text, write_status_surface
+
+    status = write_status_surface(
+        Path(output_dir),
+        Path(snapshot) if snapshot else None,
+        Path(page) if page else None,
+    )
+    click.echo(render_text(status))
+    if snapshot:
+        click.echo(f"  snapshot written: {snapshot}")
+    if page:
+        click.echo(f"  status page written: {page}")
+
+
+@cli.command("checkpoint-validate")
+@click.argument("target", type=click.Path(exists=True))
+@click.option("--all", "validate_all", is_flag=True,
+              help="Validate every retained checkpoint under a run output directory.")
+@click.option("--report", type=click.Path(), default=None,
+              help="Write the structured validation report to this path.")
+def checkpoint_validate(target: str, validate_all: bool, report: str | None) -> None:
+    """Validate one checkpoint file, or every checkpoint under a run directory."""
+    from machine_sim.sim.checkpoint import list_checkpoints, validate_checkpoint
+
+    path = Path(target)
+    if validate_all:
+        candidates = list_checkpoints(path)
+        if not candidates:
+            candidates = list_checkpoints(path.parent.parent)
+    else:
+        candidates = [path]
+
+    reports = [validate_checkpoint(candidate) for candidate in candidates]
+    pass_count = sum(1 for r in reports if r["valid"])
+    fail_count = len(reports) - pass_count
+
+    for entry in reports:
+        marker = "PASS" if entry["valid"] else "FAIL"
+        click.echo(f"{marker}  {Path(entry['checkpoint_path']).name}")
+        for check_name, result in entry["checks"].items():
+            if result != "PASS":
+                click.echo(f"        {check_name}: {result}")
+
+    click.echo(f"Validated {len(reports)} checkpoints: {pass_count} pass, {fail_count} fail")
+
+    document = {
+        "validated_count": len(reports),
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "reports": reports,
+    }
+    if report:
+        Path(report).parent.mkdir(parents=True, exist_ok=True)
+        Path(report).write_text(json.dumps(document, indent=2), encoding="utf-8")
+        click.echo(f"  report written: {report}")
+    if fail_count:
+        raise SystemExit(1)
+
+
+def _read_jsonl_records(path: Path) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    if not path.exists():
+        return records
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return records
+
+
+def _digest_by_tick(path: Path) -> Dict[int, str]:
+    mapping: Dict[int, str] = {}
+    for record in _read_jsonl_records(path):
+        tick = record.get("tick")
+        digest = record.get("run_digest", "")
+        if isinstance(tick, int) and digest:
+            mapping[tick] = digest
+    return mapping
+
+
+@cli.command("unattended-demo")
+@click.option("--config", "-c", type=click.Path(exists=True),
+              default="configs/milestone_20_unattended_run_control.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m20")
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--pause-fraction", type=float, default=0.4,
+              help="Fraction of requested ticks after which the pause request is written.")
+def unattended_demo(config: str, output: str, ticks: int | None, pause_fraction: float) -> None:
+    """Execute the M20 evidence scenario and write all run-control artifacts."""
+    import subprocess
+    import sys
+    import time
+
+    from machine_sim.analysis.run_status import (
+        input_digest,
+        page_is_self_contained,
+        render_text,
+        write_status_surface,
+    )
+    from machine_sim.sim.checkpoint import list_checkpoints, validate_checkpoint
+    from machine_sim.sim.run_control import (
+        MANIFEST_NAME,
+        PROGRESS_TRACE_NAME,
+        RUN_STATE_PAUSED,
+        RUN_STATE_STOPPED,
+        ControlChannel,
+    )
+
+    cfg = SimConfig.from_toml(Path(config))
+    requested_ticks = int(ticks if ticks is not None else cfg.max_ticks)
+    if not cfg.run_control_enabled:
+        raise click.UsageError(
+            "the unattended demo requires run_control_enabled in the configuration"
+        )
+    if not cfg.run_status_surface_enabled:
+        raise click.UsageError(
+            "the unattended demo requires run_status_surface_enabled in the configuration"
+        )
+
+    base = Path(output)
+    reference_dir = base / "reference_run"
+    stop_dir = base / "stop_run"
+    for directory in (base, reference_dir, stop_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    module = "machine_sim.cli.main"
+
+    def invoke(args: List[str], wait: bool = True) -> Any:
+        command = [sys.executable, "-m", module] + args
+        if wait:
+            return subprocess.run(command, check=True)
+        return subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def manifest_of(directory: Path) -> Dict[str, Any]:
+        path = directory / MANIFEST_NAME
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
+    started_at = time.time()
+
+    click.echo("Phase 1: uninterrupted reference run")
+    invoke(["run", "-c", config, "-o", str(reference_dir), "-t", str(requested_ticks),
+            "--run-control"])
+    reference_manifest = manifest_of(reference_dir)
+
+    click.echo("Phase 2: controlled run with a user-issued pause request")
+    pause_target = max(1, int(requested_ticks * pause_fraction))
+    process = invoke(["run", "-c", config, "-o", str(base), "-t", str(requested_ticks),
+                      "--run-control"], wait=False)
+    pause_requested = False
+    while process.poll() is None:
+        current = manifest_of(base)
+        if not pause_requested and int(current.get("completed_ticks", 0)) >= pause_target:
+            ControlChannel(base).write_request("pause", "demo-pause-request")
+            pause_requested = True
+            click.echo(f"  pause request written at recorded tick "
+                       f"{current.get('completed_ticks')}")
+        time.sleep(0.2)
+    process.wait()
+    paused_manifest = manifest_of(base)
+    pause_applied = paused_manifest.get("run_state") == RUN_STATE_PAUSED
+    pause_tick = int(paused_manifest.get("completed_ticks", 0))
+    click.echo(f"  run state after phase 2: {paused_manifest.get('run_state')} "
+               f"at tick {pause_tick}")
+
+    click.echo("Phase 3: resume from checkpoint in a separate process")
+    resume_applied = False
+    if pause_applied:
+        checkpoints = list_checkpoints(base)
+        resume_source = checkpoints[-1]
+        invoke(["run", "-c", config, "-o", str(base), "-t", str(requested_ticks),
+                "--run-control", "--resume-from", str(resume_source)])
+        resume_applied = True
+    final_manifest = manifest_of(base)
+
+    click.echo("Phase 4: stop request on a separate short run")
+    ControlChannel(stop_dir).write_request("stop", "demo-stop-request")
+    invoke(["run", "-c", config, "-o", str(stop_dir),
+            "-t", str(max(1, cfg.control_poll_interval * 4)), "--run-control"])
+    stop_manifest = manifest_of(stop_dir)
+    stop_applied = stop_manifest.get("run_state") == RUN_STATE_STOPPED
+
+    click.echo("Phase 5: prior-milestone regression judges")
+    regression: Dict[str, str] = {}
+    for milestone in ("14", "15", "16", "17", "18", "19"):
+        milestone_dir = base.parent / f"demo_m{milestone}"
+        if not milestone_dir.exists():
+            regression[f"m{milestone}_regression"] = "ABSENT"
+            continue
+        completed = subprocess.run(
+            [sys.executable, "-m", f"machine_sim.verification.milestone_{milestone}_judge",
+             str(milestone_dir)],
+            capture_output=True, text=True,
+        )
+        first_line = (completed.stdout or "").splitlines()[:1]
+        status = "FAIL"
+        if first_line and first_line[0].strip().endswith("PASS"):
+            status = "PASS"
+        regression[f"m{milestone}_regression"] = status
+        click.echo(f"  M{milestone}: {status}")
+
+    click.echo("Phase 6: checkpoint validation")
+    reports = [validate_checkpoint(p) for p in list_checkpoints(base)]
+    validation_pass = sum(1 for r in reports if r["valid"])
+    validation_fail = len(reports) - validation_pass
+    max_checkpoint_bytes = max(
+        [int(r["detail"].get("byte_size", 0)) for r in reports] or [0]
+    )
+    (base / "checkpoint_validation_report.json").write_text(
+        json.dumps(
+            {
+                "validated_count": len(reports),
+                "pass_count": validation_pass,
+                "fail_count": validation_fail,
+                "reports": reports,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    click.echo("Phase 7: continuation equivalence")
+    reference_digests = _digest_by_tick(reference_dir / PROGRESS_TRACE_NAME)
+    resumed_digests = _digest_by_tick(base / PROGRESS_TRACE_NAME)
+    shared_ticks = sorted(set(reference_digests) & set(resumed_digests))
+    mismatches = [t for t in shared_ticks if reference_digests[t] != resumed_digests[t]]
+    post_resume_ticks = [t for t in shared_ticks if t > pause_tick]
+    reference_final = reference_manifest.get("run_digest", "")
+    resumed_final = final_manifest.get("run_digest", "")
+    equivalence = {
+        "reference_run_digest": reference_final,
+        "resumed_run_digest": resumed_final,
+        "digests_equal": bool(reference_final) and reference_final == resumed_final,
+        "pause_tick": pause_tick,
+        "final_tick": int(final_manifest.get("completed_ticks", 0)),
+        "resumed_tick_span": max(0, int(final_manifest.get("completed_ticks", 0)) - pause_tick),
+        "compared_tick_count": len(shared_ticks),
+        "post_resume_compared_tick_count": len(post_resume_ticks),
+        "sampled_digest_mismatch_count": len(mismatches),
+        "first_mismatch_tick": mismatches[0] if mismatches else None,
+        "reference_tick_digests": [
+            {"tick": t, "run_digest": reference_digests[t]} for t in shared_ticks[:200]
+        ],
+        "resumed_tick_digests": [
+            {"tick": t, "run_digest": resumed_digests[t]} for t in shared_ticks[:200]
+        ],
+        "process_isolated": True,
+        "reference_run_dir": "reference_run",
+    }
+    (base / "resume_equivalence_report.json").write_text(
+        json.dumps(equivalence, indent=2), encoding="utf-8"
+    )
+
+    click.echo("Phase 8: read-only status surface")
+    digest_before = input_digest(base)
+    status = write_status_surface(
+        base,
+        base / "run_status_snapshot.json",
+        base / "run_dashboard.html",
+    )
+    digest_after = input_digest(base)
+    surface_read_only = digest_before == digest_after
+    page_text = (base / "run_dashboard.html").read_text(encoding="utf-8")
+    click.echo(render_text(status))
+
+    artifact_index = {
+        "run_manifest": MANIFEST_NAME,
+        "run_progress_trace": PROGRESS_TRACE_NAME,
+        "checkpoint_index": "checkpoints/checkpoint_index.json",
+        "control_history": "control/control_history.jsonl",
+        "checkpoint_validation_report": "checkpoint_validation_report.json",
+        "resume_equivalence_report": "resume_equivalence_report.json",
+        "unattended_run_summary": "unattended_run_summary.json",
+        "run_status_snapshot": "run_status_snapshot.json",
+        "run_dashboard": "run_dashboard.html",
+        "reference_run_manifest": f"reference_run/{MANIFEST_NAME}",
+        "stop_run_manifest": f"stop_run/{MANIFEST_NAME}",
+    }
+    (base / "artifact_index.json").write_text(
+        json.dumps({"artifact_index": artifact_index}, indent=2), encoding="utf-8"
+    )
+
+    control_records = ControlChannel(base).history()
+    retained = list_checkpoints(base)
+    summary = {
+        "run_id": final_manifest.get("run_id", ""),
+        "run_ticks": int(final_manifest.get("completed_ticks", 0)),
+        "requested_ticks": requested_ticks,
+        "final_run_state": final_manifest.get("run_state", ""),
+        "reference_final_run_state": reference_manifest.get("run_state", ""),
+        "checkpoint_count": len(final_manifest.get("checkpoint_records", [])),
+        "retained_checkpoint_count": len(retained),
+        "pruned_checkpoint_count": max(
+            0, len(final_manifest.get("checkpoint_records", [])) - len(retained)
+        ),
+        "checkpoint_retention_limit": cfg.checkpoint_retention_limit,
+        "checkpoint_interval": cfg.checkpoint_interval,
+        "control_poll_interval": cfg.control_poll_interval,
+        "applied_control_count": len(control_records),
+        "pause_applied": pause_applied,
+        "stop_applied": stop_applied,
+        "resume_applied": resume_applied,
+        "pause_tick": pause_tick,
+        "resumed_tick_span": equivalence["resumed_tick_span"],
+        "continuation_equivalence": equivalence["digests_equal"]
+        and equivalence["sampled_digest_mismatch_count"] == 0,
+        "sampled_digest_mismatch_count": equivalence["sampled_digest_mismatch_count"],
+        "checkpoint_validation_pass_count": validation_pass,
+        "checkpoint_validation_fail_count": validation_fail,
+        "max_checkpoint_bytes": max_checkpoint_bytes,
+        "status_surface_read_only": surface_read_only,
+        "status_page_self_contained": page_is_self_contained(page_text),
+        "artifact_index": artifact_index,
+        "elapsed_seconds": round(time.time() - started_at, 2),
+        "strict_regression_summary": regression,
+    }
+    (base / "unattended_run_summary.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
+
+    click.echo("")
+    click.echo(f"Unattended run demo complete in {summary['elapsed_seconds']}s")
+    click.echo(f"  final run state        : {summary['final_run_state']}")
+    click.echo(f"  pause applied          : {pause_applied} at tick {pause_tick}")
+    click.echo(f"  resume applied         : {resume_applied}")
+    click.echo(f"  stop applied           : {stop_applied}")
+    click.echo(f"  resumed tick span      : {summary['resumed_tick_span']}")
+    click.echo(f"  continuation equivalent: {summary['continuation_equivalence']}")
+    click.echo(f"  checkpoints validated  : {validation_pass} pass, {validation_fail} fail")
+    click.echo(f"  artifacts written to   : {base}")
 
 
 if __name__ == "__main__":

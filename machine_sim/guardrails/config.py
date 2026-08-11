@@ -98,6 +98,14 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "neural_plastic_update_cost",
     "neural_fabrication_hidden_unit_cost",
     "neural_fabrication_connection_cost",
+    "run_control_enabled",
+    "checkpoint_enabled",
+    "checkpoint_interval",
+    "checkpoint_retention_limit",
+    "control_poll_interval",
+    "run_progress_interval",
+    "run_digest_enabled",
+    "run_status_surface_enabled",
 }
 
 # Allowed memory event_type labels

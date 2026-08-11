@@ -85,6 +85,10 @@ class SimEngine:
         self._total_processing_cost: float = 0.0
         self._total_fabrication_cost: float = 0.0
         self._architecture_dist_snapshot_interval = max(1, config.max_ticks // 20)
+        # M20: per-tick digest chain value, advanced by the run controller and
+        # carried through checkpoint capture so a resumed run continues the
+        # same chain.
+        self.run_digest_value: str = ""
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
