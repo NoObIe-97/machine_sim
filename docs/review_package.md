@@ -52,7 +52,7 @@
 - `f1c4de1` — Milestone 19 successor-transferred neural architecture variation
 - `d9bd3bf` — Milestone 19 demo artifact and determinism fixes
 - `275befc` — Milestone 20 user-owned unattended run control
-- `PLACEHOLDER_M20A` — Milestone 20A stage-closing documentation sync
+- `254bfec` — Milestone 20A stage-closing documentation sync
 
 ## Branch Name
 `feature/milestone-1`
