@@ -122,9 +122,14 @@ def _register_initial_units(engine: SimEngine, cfg: SimConfig) -> None:
               help="Tick spacing between checkpoints when run control is active.")
 @click.option("--resume-from", type=click.Path(exists=True), default=None,
               help="Resume a controlled run from a checkpoint file.")
+@click.option("--deep-digest-interval", type=int, default=None,
+              help="Sample the deep semantic-state digest every N ticks (M21 oracle).")
+@click.option("--deep-digest-trace", type=click.Path(), default=None,
+              help="Append-only JSONL sink for deep-digest samples.")
 def run(config: str, ticks: int | None, seed: int | None, output: str | None,
         verbose: bool, run_control: bool, checkpoint_interval: int | None,
-        resume_from: str | None) -> None:
+        resume_from: str | None, deep_digest_interval: int | None,
+        deep_digest_trace: str | None) -> None:
     """Run a simulation."""
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
 
@@ -137,10 +142,15 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None,
     use_run_control = run_control or cfg.run_control_enabled
     if (use_run_control or resume_from) and not output:
         raise click.UsageError("run control requires --output")
+    if deep_digest_interval is not None and not deep_digest_trace:
+        raise click.UsageError("--deep-digest-interval requires --deep-digest-trace")
 
     if resume_from:
         from machine_sim.sim.run_control import resume_controller
         controller = resume_controller(Path(output), Path(resume_from), cfg.max_ticks)
+        if deep_digest_interval is not None:
+            controller.deep_digest_interval = max(1, int(deep_digest_interval))
+            controller.deep_digest_path = Path(deep_digest_trace)
         engine = controller.engine
         click.echo(f"Resumed run {controller.manifest.run_id} at tick {engine.tick_count}")
         final_state = controller.advance()
@@ -156,6 +166,8 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None,
             controller = RunController(
                 engine, Path(output), checkpoint_interval=checkpoint_interval,
                 checkpoint_enabled=True, run_digest_enabled=True,
+                deep_digest_interval=deep_digest_interval,
+                deep_digest_path=Path(deep_digest_trace) if deep_digest_trace else None,
             )
             controller.start()
             final_state = controller.advance()
@@ -1806,6 +1818,178 @@ def unattended_demo(config: str, output: str, ticks: int | None, pause_fraction:
     click.echo(f"  continuation equivalent: {summary['continuation_equivalence']}")
     click.echo(f"  checkpoints validated  : {validation_pass} pass, {validation_fail} fail")
     click.echo(f"  artifacts written to   : {base}")
+
+
+DEFAULT_ACCEPTED_M21_COMMIT = "ab20cdc4f2ea63c2a42f1ffb58c52568afebd487"
+
+
+@cli.command("m21-reference")
+@click.option("--config-a", "-a", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_a.toml")
+@click.option("--config-b", "-b", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_b.toml")
+@click.option("--config-c", "-c", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_c.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m21/reference")
+@click.option("--sample-interval", "-i", type=int, default=100)
+@click.option("--accepted-commit", type=str, default=DEFAULT_ACCEPTED_M21_COMMIT)
+def m21_reference(config_a: str, config_b: str, config_c: str, output: str,
+                  sample_interval: int, accepted_commit: str) -> None:
+    """Freeze M21 deep-digest reference trajectories before optimization."""
+    from machine_sim.perf.reference import freeze_references
+
+    summary = freeze_references(
+        config_paths={"a": Path(config_a), "b": Path(config_b), "c": Path(config_c)},
+        output_dir=Path(output),
+        accepted_commit=accepted_commit,
+        sample_interval=max(1, sample_interval),
+    )
+    click.echo("M21 reference trajectories frozen:")
+    for series_name, detail in summary["series"].items():
+        click.echo(
+            f"  series {series_name}: ticks={detail['ticks']} "
+            f"(meets_minimum={detail['meets_minimum']})"
+        )
+    series_c = summary["series"]["c"]
+    click.echo(
+        f"  pause/resume continuity: deep_equal="
+        f"{series_c['uninterrupted_vs_resumed_deep_samples_equal']} shallow_equal="
+        f"{series_c['uninterrupted_vs_resumed_shallow_chain_equal']}"
+    )
+    click.echo(f"  accepted reference commit: {summary['accepted_reference_commit']}")
+    click.echo(f"  artifacts: {summary['artifact_paths']}")
+
+
+@cli.command("m21-equivalence")
+@click.option("--config-a", "-a", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_a.toml")
+@click.option("--config-b", "-b", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_b.toml")
+@click.option("--config-c", "-c", type=click.Path(exists=True),
+              default="configs/milestone_21_reference_c.toml")
+@click.option("--reference-dir", type=click.Path(exists=True),
+              default="output/demo_m21/reference")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m21/determinism")
+@click.option("--sample-interval", "-i", type=int, default=100)
+@click.option("--accepted-commit", type=str, default=DEFAULT_ACCEPTED_M21_COMMIT)
+def m21_equivalence(config_a: str, config_b: str, config_c: str, reference_dir: str,
+                    output: str, sample_interval: int, accepted_commit: str) -> None:
+    """Rerun frozen M21 reference configurations and require zero mismatches."""
+    from machine_sim.perf.reference import verify_equivalence
+
+    report = verify_equivalence(
+        config_paths={"a": Path(config_a), "b": Path(config_b), "c": Path(config_c)},
+        reference_dir=Path(reference_dir),
+        determinism_dir=Path(output),
+        accepted_commit=accepted_commit,
+        sample_interval=max(1, sample_interval),
+    )
+    click.echo("M21 deep equivalence report:")
+    for series_name, outcome in report["series"].items():
+        click.echo(
+            f"  {series_name}: samples={outcome['sample_count']} "
+            f"mismatches={outcome['mismatch_count']} final_equal={outcome['final_equal']}"
+        )
+    click.echo(f"  total mismatch count: {report['mismatch_count']}")
+    if not report["zero_mismatch_acceptance"]:
+        raise SystemExit(1)
+
+
+@cli.command("benchmark")
+@click.option("--config", "-c", type=click.Path(exists=True),
+              default="configs/milestone_21_performance.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m21/performance")
+@click.option("--label", "-l", type=str, default="baseline",
+              help="Artifact label: baseline or optimized.")
+@click.option("--reps", type=int, default=3)
+@click.option("--warmup", type=int, default=1)
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--checkpoint-interval", type=int, default=None)
+@click.option("--profile", "with_profile", is_flag=True,
+              help="Also write hotspot_profile_<label>.json / profile_<label>.txt.")
+def benchmark(config: str, output: str, label: str, reps: int, warmup: int,
+              ticks: int | None, checkpoint_interval: int | None,
+              with_profile: bool) -> None:
+    """Run the M21 repeatable throughput benchmark suite."""
+    from machine_sim.perf.benchmark import profile_hotspots, run_benchmark_suite
+
+    summary = run_benchmark_suite(
+        config_path=Path(config),
+        output_dir=Path(output),
+        label=label,
+        repetitions=max(1, reps),
+        warmup=max(0, warmup),
+        ticks=ticks,
+        checkpoint_interval=checkpoint_interval,
+    )
+    click.echo(
+        f"Benchmark '{label}': median {summary['metrics_median']['ticks_per_second']} ticks/s "
+        f"over {summary['repetitions']} repetitions"
+    )
+    if with_profile:
+        profile = profile_hotspots(
+            config_path=Path(config),
+            output_dir=Path(output),
+            label="before" if label == "baseline" else "after",
+            ticks=ticks,
+        )
+        click.echo(
+            f"Profile written: top cumulative entry "
+            f"{profile['top_by_cumulative'][0]['function']}"
+        )
+
+
+@cli.command("population-benchmark")
+@click.option("--config", "-c", type=click.Path(exists=True),
+              default="configs/milestone_21_population_scaling.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m21/performance")
+@click.option("--ticks", "-t", type=int, default=None)
+@click.option("--tiers", type=str, default="10,100,1000")
+@click.option("--reps", type=int, default=1)
+@click.option("--warmup", type=int, default=1)
+def population_benchmark(config: str, output: str, ticks: int | None, tiers: str,
+                         reps: int, warmup: int) -> None:
+    """Run the M21 unit-count scaling benchmark set."""
+    from machine_sim.perf.benchmark import run_population_scaling
+
+    tier_values = [int(value) for value in tiers.split(",") if value.strip()]
+    target = run_population_scaling(
+        config_path=Path(config),
+        output_dir=Path(output),
+        unit_tiers=tier_values,
+        ticks=ticks,
+        repetitions=max(1, reps),
+        warmup=max(0, warmup),
+    )
+    click.echo(f"Population scaling rows written to {target}")
+
+
+@cli.command("benchmark-compare")
+@click.option("--baseline", "-b", type=click.Path(exists=True),
+              default="output/demo_m21/performance/performance_baseline.json")
+@click.option("--optimized", "-p", type=click.Path(exists=True),
+              default="output/demo_m21/performance/performance_optimized.json")
+@click.option("--output", "-o", type=click.Path(),
+              default="output/demo_m21/performance/performance_comparison.json")
+@click.option("--minimum-speedup", type=float, default=2.5)
+def benchmark_compare(baseline: str, optimized: str, output: str,
+                      minimum_speedup: float) -> None:
+    """Compare baseline and optimized benchmark summaries."""
+    from machine_sim.perf.benchmark import compare_performance
+
+    report = compare_performance(
+        baseline_path=Path(baseline),
+        optimized_path=Path(optimized),
+        output_path=Path(output),
+        minimum_speedup=minimum_speedup,
+    )
+    click.echo(
+        f"Primary end-to-end speedup: {report['primary_end_to_end_speedup']}x "
+        f"(required >= {report['minimum_required_speedup']}x, "
+        f"met={report['meets_required_speedup']})"
+    )
+    if not report["meets_required_speedup"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

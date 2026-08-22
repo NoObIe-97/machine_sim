@@ -331,6 +331,8 @@ class RunController:
         control_poll_interval: Optional[int] = None,
         run_progress_interval: Optional[int] = None,
         run_digest_enabled: Optional[bool] = None,
+        deep_digest_interval: Optional[int] = None,
+        deep_digest_path: Optional[Path] = None,
     ) -> None:
         self.engine = engine
         self.output_dir = Path(output_dir)
@@ -377,6 +379,13 @@ class RunController:
         self._progress_lines = 0
         self._started_at = time.time()
         self._pruned_checkpoints: List[str] = []
+        # M21 optional deep-digest sampling. Inactive unless both values are
+        # provided; sampling writes an append-only JSONL record per sampled
+        # tick and never touches simulation state.
+        self.deep_digest_interval = (
+            max(1, int(deep_digest_interval)) if deep_digest_interval else None
+        )
+        self.deep_digest_path = Path(deep_digest_path) if deep_digest_path else None
 
     @property
     def run_digest(self) -> str:
@@ -466,6 +475,22 @@ class RunController:
             return None
         return self._apply_control_request(request)
 
+    def _sample_deep_digest(self, tick: int) -> None:
+        if not self.deep_digest_interval or self.deep_digest_path is None:
+            return
+        if tick % self.deep_digest_interval != 0:
+            return
+        from machine_sim.sim.state_digest import deep_state_digest
+
+        record = {
+            "tick": int(tick),
+            "deep_digest": deep_state_digest(self.engine),
+            "run_digest": self.run_digest,
+        }
+        self.deep_digest_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.deep_digest_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+
     def advance(self, target_ticks: Optional[int] = None) -> str:
         """Run ticks until the target, a control request, or completion."""
         if self.manifest.run_state != RUN_STATE_RUNNING:
@@ -481,6 +506,8 @@ class RunController:
                 self._set_run_digest(
                     advance_run_digest(self.run_digest, tick_observation(self.engine))
                 )
+
+            self._sample_deep_digest(tick)
 
             if tick % self.run_progress_interval == 0:
                 self._write_progress_record(time.time() - self._started_at)

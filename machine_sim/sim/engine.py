@@ -89,6 +89,8 @@ class SimEngine:
         # carried through checkpoint capture so a resumed run continues the
         # same chain.
         self.run_digest_value: str = ""
+        # M21 benchmark counters: observation-only, never read by the tick loop.
+        self.bench_unit_decisions = 0
 
     def register_unit(self, unit: MachineUnit) -> None:
         self.units.append(unit)
@@ -136,6 +138,7 @@ class SimEngine:
         # Phase 3: Unit decision + action
         for unit in self.units:
             if unit.is_active:
+                self.bench_unit_decisions += 1
                 action = unit.decide(self.tick_count)
                 if action is not None:
                     validate_action_name(action.action_type.name)

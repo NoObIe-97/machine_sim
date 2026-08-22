@@ -148,6 +148,8 @@ class NeuralController:
         self.config = config or NeuralProcessingConfig()
         self.state = self._initialize_state(unit_id, seed)
         self._last_action_output: Dict[str, Any] = {}
+        # M21 benchmark counter: observation-only, never read by runtime logic.
+        self.forward_evaluations = 0
 
     def _make_rng(self, unit_id: str, seed: int) -> random.Random:
         combined = stable_seed("neural_init", unit_id, seed)
@@ -239,6 +241,7 @@ class NeuralController:
         """
         s = self.state
         cfg = self.config
+        self.forward_evaluations += 1
 
         # h_t = tanh(W_in @ x + (W_rec * mask) @ h_prev + b_hidden)
         h_in = self._matvec(s.W_in, sensor_input)

@@ -61,6 +61,10 @@ class World:
         self._next_signal_id = 0
         self._current_tick = 0
         self._active_cells: set = set()
+        # M21 benchmark counters: observation-only, never read by the tick loop.
+        self.update_calls = 0
+        self.cells_visited_total = 0
+        self.cells_updated_total = 0
         self._init_grid()
 
     def _init_grid(self) -> None:
@@ -107,8 +111,12 @@ class World:
 
     def update(self, tick: int) -> List[Event]:
         self._current_tick = tick
+        self.update_calls += 1
         events: List[Event] = []
         for pos, cell in self.grid.items():
+            self.cells_visited_total += 1
+            if cell.resources or cell.hazards:
+                self.cells_updated_total += 1
             for res in cell.resources.values():
                 old_qty = res.quantity
                 res.quantity = min(res.max_quantity,

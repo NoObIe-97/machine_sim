@@ -1,0 +1,44 @@
+# M21 reference family A: short deterministic baseline (2,500 ticks).
+# Core loop only: resources, hazards, signals, adaptive control, neural
+# processing. No architecture variation, no fabrication.
+[simulation]
+grid_width = 120
+grid_height = 120
+resource_density = 0.45
+hazard_density = 0.01
+unit_count = 8
+power_drain_rate = 0.08
+max_ticks = 2500
+seed = 421
+component_degradation_scale = 0.2
+
+signal_enabled = true
+signal_pattern_count = 4
+signal_energy_cost = 1.0
+signal_default_radius = 60
+signal_default_decay = 0.01
+signal_default_duration = 40
+signal_observation_window = 20
+
+adaptive_enabled = true
+
+neural_controller_enabled = true
+neural_controller_mode = "replace"
+neural_plasticity_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.01
+
+neural_architecture_variation_enabled = false
+
+telemetry_enabled = false
+reconciliation_enabled = false
+lineage_drift_enabled = false
+pressure_analysis_enabled = false
+signal_dynamics_enabled = false
+trace_compression_enabled = false
+trace_drift_enabled = false
+summary_consistency_enabled = false
+
+long_run_adaptation_enabled = true
+multi_generation_trace_enabled = false
+trajectory_compression_enabled = false
