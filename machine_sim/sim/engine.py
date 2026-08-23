@@ -17,7 +17,11 @@ from machine_sim.analysis.trace_drift import TraceDriftAnalyzer
 from machine_sim.analysis.summary_consistency import SummaryConsistencyAnalyzer
 from machine_sim.analysis.multi_generation_trace import MultiGenerationTraceAnalyzer
 from machine_sim.environment.calibration import CapsuleManager
-from machine_sim.environment.fabrication import FabricationEngine, FabricationResult
+from machine_sim.environment.fabrication import (
+    FabricationEngine,
+    FabricationResult,
+    PendingFabrication,
+)
 from machine_sim.environment.world import World
 from machine_sim.guardrails.runtime import (
     StateViolation,
@@ -282,447 +286,495 @@ class SimEngine:
             new_units = []
             for unit in self.units:
                 if unit.is_active:
-                    result = self.fabrication_engine.fabricate(
-                        unit, self.tick_count, self.world,
-                        len(self.units) + len(new_units), self.rng
+                    # M22A: program-enabled units use the two-phase boundary.
+                    # prepare_fabricate counts the attempt and consumes base
+                    # costs / reserves placement + ID, but commits none of the
+                    # success-only state; commit_fabrication runs only after a
+                    # successor has actually been assembled. Legacy units keep
+                    # the single-call path (prepare + immediate commit).
+                    unit_program_mode = (
+                        getattr(self.config, 'design_program_enabled', False)
+                        and getattr(unit, '_design_program', None) is not None
+                        and self.config.fabrication_enabled
                     )
-                    if result.success and result.template and result.placement:
-                        # M22: in program mode the successor's design program
-                        # is transferred, varied, and interpreted BEFORE
-                        # assembly. A program that does not decode aborts
-                        # assembly with machine-native consequences: costs
-                        # already consumed stay consumed, no successor is
-                        # created, and the failure is recorded.
-                        program_mode = (
-                            getattr(self.config, 'design_program_enabled', False)
-                            and getattr(unit, '_design_program', None) is not None
+                    if unit_program_mode:
+                        prepared = self.fabrication_engine.prepare_fabricate(
+                            unit, self.tick_count, self.world,
+                            len(self.units) + len(new_units), self.rng
                         )
-                        successor_program = None
-                        decoded_successor_arch = None
-                        program_execution_bounds = None
+                    else:
+                        prepared = self.fabrication_engine.fabricate(
+                            unit, self.tick_count, self.world,
+                            len(self.units) + len(new_units), self.rng
+                        )
 
-                        if program_mode:
-                            from machine_sim.agents.design_program import (
-                                DesignExecutionBounds,
-                                DesignProgramInterpreter,
-                                DesignProgramVariationBounds,
-                                vary_design_program,
+                    failure_result = None
+                    pending = None
+                    if isinstance(prepared, PendingFabrication):
+                        pending = prepared
+                    else:
+                        failure_result = prepared
+
+                    result = pending.to_result() if pending is not None else failure_result
+
+                    if not (result.success and result.template and result.placement):
+                        if failure_result.failure_cause:
+                            self._record_event(Event(
+                                tick=self.tick_count,
+                                event_type=EventType.FABRICATION_FAILED,
+                                unit_id=unit.unit_id,
+                                data={"cause": failure_result.failure_cause},
+                            ))
+                        continue
+
+                    # M22: in program mode the successor's design program
+                    # is transferred, varied, and interpreted BEFORE assembly
+                    # is committed. A program that does not decode aborts
+                    # assembly with machine-native consequences: costs already
+                    # consumed stay consumed, no successor is created, no
+                    # success-only state is committed, and the attempt plus a
+                    # deterministic failure cause are recorded.
+                    program_mode = unit_program_mode
+                    successor_program = None
+                    decoded_successor_arch = None
+                    program_execution_bounds = None
+
+                    if program_mode:
+                        from machine_sim.agents.design_program import (
+                            DesignExecutionBounds,
+                            DesignProgramInterpreter,
+                            DesignProgramVariationBounds,
+                            vary_design_program,
+                        )
+                        from machine_sim.agents.neural_architecture import (
+                            NeuralArchitectureConfig as _ProgramArchCfg,
+                        )
+                        import random as _prog_rng
+
+                        arch_cfg_for_bounds = _ProgramArchCfg(
+                            minimum_hidden_size=self.config.minimum_hidden_size,
+                            maximum_hidden_size=self.config.maximum_hidden_size,
+                            minimum_recurrent_density=self.config.minimum_recurrent_density,
+                            maximum_recurrent_density=self.config.maximum_recurrent_density,
+                            minimum_plasticity_rate=self.config.minimum_plasticity_rate,
+                            maximum_plasticity_rate=self.config.maximum_plasticity_rate,
+                            initial_plasticity_rate=self.config.neural_plasticity_rate,
+                        )
+                        program_execution_bounds = DesignExecutionBounds.from_architecture_config(
+                            arch_cfg_for_bounds,
+                            execution_budget=self.config.program_execution_budget,
+                            program_base_cost=self.config.program_base_cost,
+                            program_per_instruction_cost=self.config.program_per_instruction_cost,
+                        )
+                        variation_bounds = DesignProgramVariationBounds(
+                            substitution_probability=self.config.program_substitution_probability,
+                            operand_mutation_probability=self.config.program_operand_mutation_probability,
+                            insertion_probability=self.config.program_insertion_probability,
+                            deletion_probability=self.config.program_deletion_probability,
+                            minimum_program_length=self.config.program_min_length,
+                            maximum_program_length=self.config.program_max_length,
+                        )
+                        prog_rng = _prog_rng.Random(
+                            self.tick_count * 11
+                            + stable_seed("design_program_transfer", unit.unit_id)
+                        )
+                        variation_outcome = vary_design_program(
+                            unit._design_program, prog_rng,
+                            program_execution_bounds, variation_bounds,
+                        )
+                        execution_result = DesignProgramInterpreter(
+                            program_execution_bounds
+                        ).execute(
+                            variation_outcome.program,
+                            program_length_bounds=(
+                                self.config.program_min_length,
+                                self.config.program_max_length,
+                            ),
+                        )
+                        successor_program = variation_outcome.program
+                        decoded_successor_arch = execution_result.decoded_architecture
+                        source_desc = getattr(unit, '_architecture_descriptor', None)
+                        if decoded_successor_arch is not None and source_desc is not None:
+                            phenotype_changed = (
+                                decoded_successor_arch.hidden_size != source_desc.hidden_size
+                                or round(decoded_successor_arch.recurrent_density, 9)
+                                != round(source_desc.recurrent_density, 9)
+                                or round(decoded_successor_arch.plasticity_rate, 9)
+                                != round(source_desc.plasticity_rate, 9)
+                                or decoded_successor_arch.plasticity_enabled
+                                != source_desc.plasticity_enabled
                             )
+                        else:
+                            phenotype_changed = True
+                        self._design_program_transfer_trace.append({
+                            "tick": self.tick_count,
+                            "source_unit_id": unit.unit_id,
+                            # Provisional candidate ID (documented option
+                            # A): reserved during the attempt and bound to
+                            # the assembled successor on commit; a failed
+                            # assembly leaves this ID unused and absent
+                            # from every lineage record.
+                            "successor_unit_id": result.successor_id,
+                            "successor_id_provisional": True,
+                            "source_generation": getattr(unit, '_generation_index', 0),
+                            "source_program_digest": unit._design_program.program_digest(),
+                            "source_program_length": unit._design_program.length,
+                            "successor_program_digest": successor_program.program_digest(),
+                            "successor_program_length": successor_program.length,
+                            "variation_operations": variation_outcome.operations[:32],
+                            "variation_operation_count": len(variation_outcome.operations),
+                            "execution_status": execution_result.status,
+                            "executed_instruction_count": execution_result.executed_instruction_count,
+                            "execution_cost": round(execution_result.execution_cost, 6),
+                            "decoded_hidden_size": (
+                                decoded_successor_arch.hidden_size
+                                if decoded_successor_arch is not None else None
+                            ),
+                            "decoded_recurrent_density": (
+                                round(decoded_successor_arch.recurrent_density, 6)
+                                if decoded_successor_arch is not None else None
+                            ),
+                            "decoded_plasticity_rate": (
+                                round(decoded_successor_arch.plasticity_rate, 6)
+                                if decoded_successor_arch is not None else None
+                            ),
+                            "decoded_plasticity_enabled": (
+                                decoded_successor_arch.plasticity_enabled
+                                if decoded_successor_arch is not None else None
+                            ),
+                            "phenotype_changed": phenotype_changed,
+                        })
+                        self._design_program_execution_trace.append({
+                            "tick": self.tick_count,
+                            "unit_id": result.successor_id,
+                            "status": execution_result.status,
+                            "executed_instruction_count": execution_result.executed_instruction_count,
+                            "final_program_counter": execution_result.final_program_counter,
+                            "execution_cost": round(execution_result.execution_cost, 6),
+                            "fault_records": execution_result.fault_records[:16],
+                        })
+                        unit.power_reserve = max(
+                            0.0,
+                            unit.power_reserve - execution_result.execution_cost,
+                        )
+                        self._total_program_execution_cost += execution_result.execution_cost
+                        if decoded_successor_arch is None:
+                            from machine_sim.environment.fabrication import (
+                                record_program_failure,
+                            )
+                            record_program_failure(
+                                self.fabrication_engine,
+                                "successor_program_invalid",
+                            )
+                            self._record_event(Event(
+                                tick=self.tick_count,
+                                event_type=EventType.FABRICATION_FAILED,
+                                unit_id=unit.unit_id,
+                                data={
+                                    "cause": "successor_program_invalid",
+                                    "execution_status": execution_result.status,
+                                    "program_digest": successor_program.program_digest(),
+                                    "provisional_successor_id": result.successor_id,
+                                },
+                            ))
+                            continue
+
+                    # Create successor unit from the exact template generated
+                    from machine_sim.agents.unit import MachineUnitImpl
+                    tmpl = result.template
+                    successor = MachineUnitImpl(
+                        unit_id=result.successor_id,
+                        position=result.placement,
+                        signal_enabled=tmpl.signal_enabled,
+                        signal_pattern_count=tmpl.signal_pattern_count,
+                        signal_energy_cost=tmpl.signal_energy_cost,
+                        signal_default_radius=tmpl.signal_default_radius,
+                        signal_default_decay=tmpl.signal_default_decay,
+                        signal_default_duration=tmpl.signal_default_duration,
+                        adaptive_enabled=tmpl.adaptive_enabled,
+                        neural_controller_enabled=self.config.neural_controller_enabled,
+                        neural_controller_mode=self.config.neural_controller_mode,
+                        neural_plasticity_enabled=self.config.neural_plasticity_enabled,
+                        neural_hidden_size=self.config.neural_hidden_size,
+                        neural_plasticity_rate=self.config.neural_plasticity_rate,
+                        neural_seed=self.config.seed,
+                        neural_architecture_descriptor=(
+                            decoded_successor_arch if program_mode else None
+                        ),
+                        design_program=successor_program,
+                        design_execution_bounds=program_execution_bounds,
+                        design_program_length_bounds=(
+                            (self.config.program_min_length, self.config.program_max_length)
+                            if program_mode else None
+                        ),
+                    )
+                    successor.max_power = tmpl.max_power
+                    successor.power_reserve = tmpl.max_power
+                    successor.SENSOR_RANGE = tmpl.sensor_range
+                    successor._generation_index = getattr(unit, '_generation_index', 0) + 1
+
+                    # Scale component degradation rates for successor
+                    if self.config.component_degradation_scale != 1.0:
+                        for comp in successor.components.values():
+                            comp.degradation_rate *= self.config.component_degradation_scale
+
+                    # Generate and apply calibration capsule
+                    if self.capsule_manager.enabled:
+                        capsule = self.capsule_manager.generate_and_store(
+                            unit, self.world, result.successor_id, self.tick_count
+                        )
+                        self.capsule_manager.generator.apply_warm_start(capsule, successor)
+                        result.capsule = capsule
+
+                    # Transfer adaptive state from source to successor
+                    if (self.config.adaptive_enabled
+                            and hasattr(unit, '_adaptive_controller')
+                            and unit._adaptive_controller.enabled
+                            and successor.adaptive_enabled):
+                        successor_state = unit._adaptive_controller.transfer_to_successor(
+                            unit._adaptive_state, self.rng, variation=0.05
+                        )
+                        successor._adaptive_state = successor_state
+                        # Record descendant adaptive-state transfer
+                        if self.config.long_run_adaptation_enabled:
+                            if not hasattr(self, '_descendant_transfer_trace'):
+                                self._descendant_transfer_trace = []
+                            source_d = unit._adaptive_state.to_dict()
+                            succ_d = successor_state.to_dict()
+                            delta = {k: succ_d[k] - source_d[k] for k in source_d}
+                            self._descendant_transfer_trace.append({
+                                "tick": self.tick_count,
+                                "source_unit_id": unit.unit_id,
+                                "successor_unit_id": result.successor_id,
+                                "source_generation": getattr(unit, '_generation_index', 0),
+                                "successor_generation": successor._generation_index,
+                                "source_adaptive_summary": {k: round(v, 4) for k, v in source_d.items()},
+                                "successor_adaptive_summary": {k: round(v, 4) for k, v in succ_d.items()},
+                                "bounded_delta_summary": {k: round(v, 4) for k, v in delta.items()},
+                            })
+                        # Record generation-indexed transfer trace
+                        if self.config.long_run_adaptation_enabled and self.config.multi_generation_trace_enabled:
+                            self.multi_gen_trace.record_transfer(
+                                tick=self.tick_count,
+                                source_unit_id=unit.unit_id,
+                                successor_unit_id=result.successor_id,
+                                source_generation_index=getattr(unit, '_generation_index', 0),
+                                successor_generation_index=successor._generation_index,
+                                source_adaptive_state=unit._adaptive_state.to_dict(),
+                                successor_adaptive_state=successor_state.to_dict(),
+                                source_lifetime_ticks=self.tick_count,
+                                successor_initial_power_ratio=successor._power_ratio(),
+                            )
+
+                    # Transfer neural controller state from source to successor
+                    if (self.config.neural_controller_enabled
+                            and hasattr(unit, '_neural_controller')
+                            and unit._neural_controller is not None
+                            and hasattr(successor, '_neural_controller')
+                            and successor._neural_controller is not None):
+                        import random as _nc_rng
+                        nc_rng = _nc_rng.Random(self.tick_count * 7 + stable_seed("nc_transfer", unit.unit_id))
+
+                        # M19: Architecture variation. In M22 program mode
+                        # the successor architecture comes from its decoded
+                        # program, so descriptor variation is not applied
+                        # to the same successor (no double mutation).
+                        arch_variation_enabled = (
+                            self.config.neural_architecture_variation_enabled
+                            and not program_mode
+                        )
+                        source_arch = getattr(unit, '_architecture_descriptor', None)
+                        successor_arch = None
+                        transition_record = None
+
+                        if arch_variation_enabled and source_arch is not None:
                             from machine_sim.agents.neural_architecture import (
-                                NeuralArchitectureConfig as _ProgramArchCfg,
+                                vary_architecture, NeuralArchitectureConfig,
+                                resize_state_for_successor, compute_recurrence_mask,
+                                compute_processing_cost, compute_fabrication_cost,
+                                NeuralArchitectureTransition,
                             )
-                            import random as _prog_rng
-
-                            arch_cfg_for_bounds = _ProgramArchCfg(
+                            arch_cfg = NeuralArchitectureConfig(
                                 minimum_hidden_size=self.config.minimum_hidden_size,
                                 maximum_hidden_size=self.config.maximum_hidden_size,
                                 minimum_recurrent_density=self.config.minimum_recurrent_density,
                                 maximum_recurrent_density=self.config.maximum_recurrent_density,
                                 minimum_plasticity_rate=self.config.minimum_plasticity_rate,
                                 maximum_plasticity_rate=self.config.maximum_plasticity_rate,
-                                initial_plasticity_rate=self.config.neural_plasticity_rate,
+                                hidden_size_variation_probability=self.config.hidden_size_variation_probability,
+                                hidden_size_variation_max_step=self.config.hidden_size_variation_max_step,
+                                recurrent_density_variation_probability=self.config.recurrent_density_variation_probability,
+                                recurrent_density_variation_max_step=self.config.recurrent_density_variation_max_step,
+                                plasticity_rate_variation_probability=self.config.plasticity_rate_variation_probability,
+                                plasticity_rate_variation_max_step=self.config.plasticity_rate_variation_max_step,
+                                neural_processing_base_cost=self.config.neural_processing_base_cost,
+                                neural_hidden_unit_cost=self.config.neural_hidden_unit_cost,
+                                neural_recurrent_connection_cost=self.config.neural_recurrent_connection_cost,
+                                neural_plastic_update_cost=self.config.neural_plastic_update_cost,
+                                neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                                neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
                             )
-                            program_execution_bounds = DesignExecutionBounds.from_architecture_config(
-                                arch_cfg_for_bounds,
-                                execution_budget=self.config.program_execution_budget,
-                                program_base_cost=self.config.program_base_cost,
-                                program_per_instruction_cost=self.config.program_per_instruction_cost,
+
+                            successor_arch = vary_architecture(
+                                source_arch, arch_cfg, nc_rng,
+                                self.tick_count, index=len(self.units))
+
+                            # Dimension-changing transfer
+                            src_state = unit._neural_controller.state
+                            new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
+                                resize_state_for_successor(
+                                    src_state.hidden_state, src_state.W_in, src_state.W_rec,
+                                    src_state.W_out, src_state.W_param, src_state.b_hidden,
+                                    src_state.recurrent_mask, successor_arch, source_arch, nc_rng,
+                                    weight_bound=2.0)
+
+                            from machine_sim.agents.neural_controller import NeuralProcessingState
+                            successor_state = NeuralProcessingState(
+                                hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
+                                W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
+                                c_action=list(src_state.c_action),
+                                c_param=list(src_state.c_param),
+                                recurrent_mask=new_mask,
                             )
-                            variation_bounds = DesignProgramVariationBounds(
-                                substitution_probability=self.config.program_substitution_probability,
-                                operand_mutation_probability=self.config.program_operand_mutation_probability,
-                                insertion_probability=self.config.program_insertion_probability,
-                                deletion_probability=self.config.program_deletion_probability,
-                                minimum_program_length=self.config.program_min_length,
-                                maximum_program_length=self.config.program_max_length,
+                            successor._neural_controller.set_state(successor_state)
+                            successor._architecture_descriptor = successor_arch
+
+                            # Compute costs
+                            fab_cost = compute_fabrication_cost(successor_arch, arch_cfg)
+                            self._total_fabrication_cost += fab_cost
+
+                            # Record architecture transition
+                            old_active = source_arch.active_recurrent_connections()
+                            new_active = successor_arch.active_recurrent_connections()
+                            delta_h = successor_arch.hidden_size - source_arch.hidden_size
+
+                            transition_record = NeuralArchitectureTransition(
+                                tick=self.tick_count,
+                                source_unit_id=unit.unit_id,
+                                successor_unit_id=result.successor_id,
+                                source_generation=getattr(unit, '_generation_index', 0),
+                                successor_generation=successor._generation_index,
+                                source_architecture_id=source_arch.architecture_id,
+                                successor_architecture_id=successor_arch.architecture_id,
+                                source_hidden_size=source_arch.hidden_size,
+                                successor_hidden_size=successor_arch.hidden_size,
+                                hidden_size_delta=delta_h,
+                                source_recurrent_density=source_arch.recurrent_density,
+                                successor_recurrent_density=successor_arch.recurrent_density,
+                                recurrent_density_delta=successor_arch.recurrent_density - source_arch.recurrent_density,
+                                source_plasticity_rate=source_arch.plasticity_rate,
+                                successor_plasticity_rate=successor_arch.plasticity_rate,
+                                plasticity_rate_delta=successor_arch.plasticity_rate - source_arch.plasticity_rate,
+                                retained_hidden_count=len(retained),
+                                added_hidden_count=max(0, delta_h),
+                                removed_hidden_count=max(0, -delta_h),
+                                active_recurrent_connection_delta=new_active - old_active,
+                                processing_cost_estimate=compute_processing_cost(successor_arch, arch_cfg),
+                                fabrication_complexity_cost=fab_cost,
+                                variation_applied=True,
                             )
-                            prog_rng = _prog_rng.Random(
-                                self.tick_count * 11
-                                + stable_seed("design_program_transfer", unit.unit_id)
+                            self._architecture_transfer_trace.append(transition_record.to_dict())
+                        elif program_mode:
+                            # M22: dimension-aware state transfer from the
+                            # decoded successor architecture (M19 transfer
+                            # semantics preserved, descriptor variation
+                            # bypassed).
+                            from machine_sim.agents.neural_architecture import (
+                                NeuralArchitectureConfig as _ResizeArchCfg,
+                                compute_fabrication_cost,
+                                resize_state_for_successor,
                             )
-                            variation_outcome = vary_design_program(
-                                unit._design_program, prog_rng,
-                                program_execution_bounds, variation_bounds,
+                            src_state = unit._neural_controller.state
+                            new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
+                                resize_state_for_successor(
+                                    src_state.hidden_state, src_state.W_in, src_state.W_rec,
+                                    src_state.W_out, src_state.W_param, src_state.b_hidden,
+                                    src_state.recurrent_mask, decoded_successor_arch, source_arch, nc_rng,
+                                    weight_bound=2.0)
+
+                            from machine_sim.agents.neural_controller import NeuralProcessingState
+                            successor_state = NeuralProcessingState(
+                                hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
+                                W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
+                                c_action=list(src_state.c_action),
+                                c_param=list(src_state.c_param),
+                                recurrent_mask=new_mask,
                             )
-                            execution_result = DesignProgramInterpreter(
-                                program_execution_bounds
-                            ).execute(
-                                variation_outcome.program,
-                                program_length_bounds=(
-                                    self.config.program_min_length,
-                                    self.config.program_max_length,
-                                ),
+                            successor._neural_controller.set_state(successor_state)
+                            successor._architecture_descriptor = decoded_successor_arch
+
+                            resize_cfg = _ResizeArchCfg(
+                                neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                                neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
                             )
-                            successor_program = variation_outcome.program
-                            decoded_successor_arch = execution_result.decoded_architecture
-                            source_desc = getattr(unit, '_architecture_descriptor', None)
-                            if decoded_successor_arch is not None and source_desc is not None:
-                                phenotype_changed = (
-                                    decoded_successor_arch.hidden_size != source_desc.hidden_size
-                                    or round(decoded_successor_arch.recurrent_density, 9)
-                                    != round(source_desc.recurrent_density, 9)
-                                    or round(decoded_successor_arch.plasticity_rate, 9)
-                                    != round(source_desc.plasticity_rate, 9)
-                                    or decoded_successor_arch.plasticity_enabled
-                                    != source_desc.plasticity_enabled
-                                )
-                            else:
-                                phenotype_changed = True
-                            self._design_program_transfer_trace.append({
+                            program_fab_cost = compute_fabrication_cost(
+                                decoded_successor_arch, resize_cfg
+                            )
+                            unit.power_reserve = max(
+                                0.0, unit.power_reserve - program_fab_cost
+                            )
+                            self._total_fabrication_cost += program_fab_cost
+                        else:
+                            # Legacy transfer (no architecture variation)
+                            source_nc_state = unit._neural_controller.state.copy()
+                            successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
+                            successor._neural_controller.state = successor_nc_state
+
+                        # Record neural successor transfer trace (always)
+                        source_nc = unit._neural_controller.state
+                        succ_nc = successor._neural_controller.state
+                        if self.config.long_run_adaptation_enabled:
+                            param_delta = unit._neural_controller.get_parameter_delta(succ_nc)
+                            self._neural_successor_transfer_trace.append({
                                 "tick": self.tick_count,
                                 "source_unit_id": unit.unit_id,
                                 "successor_unit_id": result.successor_id,
                                 "source_generation": getattr(unit, '_generation_index', 0),
-                                "source_program_digest": unit._design_program.program_digest(),
-                                "source_program_length": unit._design_program.length,
-                                "successor_program_digest": successor_program.program_digest(),
-                                "successor_program_length": successor_program.length,
-                                "variation_operations": variation_outcome.operations[:32],
-                                "variation_operation_count": len(variation_outcome.operations),
-                                "execution_status": execution_result.status,
-                                "executed_instruction_count": execution_result.executed_instruction_count,
-                                "execution_cost": round(execution_result.execution_cost, 6),
-                                "decoded_hidden_size": (
-                                    decoded_successor_arch.hidden_size
-                                    if decoded_successor_arch is not None else None
-                                ),
-                                "decoded_recurrent_density": (
-                                    round(decoded_successor_arch.recurrent_density, 6)
-                                    if decoded_successor_arch is not None else None
-                                ),
-                                "decoded_plasticity_rate": (
-                                    round(decoded_successor_arch.plasticity_rate, 6)
-                                    if decoded_successor_arch is not None else None
-                                ),
-                                "decoded_plasticity_enabled": (
-                                    decoded_successor_arch.plasticity_enabled
-                                    if decoded_successor_arch is not None else None
-                                ),
-                                "phenotype_changed": phenotype_changed,
+                                "successor_generation": successor._generation_index,
+                                "source_hidden_summary": {
+                                    "mean": round(sum(source_nc.hidden_state) / len(source_nc.hidden_state), 6) if source_nc.hidden_state else 0.0,
+                                },
+                                "successor_hidden_summary": {
+                                    "mean": round(sum(succ_nc.hidden_state) / len(succ_nc.hidden_state), 6) if succ_nc.hidden_state else 0.0,
+                                },
+                                "parameter_delta": param_delta,
+                                "transfer_variation": 0.05,
                             })
-                            self._design_program_execution_trace.append({
-                                "tick": self.tick_count,
-                                "unit_id": result.successor_id,
-                                "status": execution_result.status,
-                                "executed_instruction_count": execution_result.executed_instruction_count,
-                                "final_program_counter": execution_result.final_program_counter,
-                                "execution_cost": round(execution_result.execution_cost, 6),
-                                "fault_records": execution_result.fault_records[:16],
-                            })
-                            unit.power_reserve = max(
-                                0.0,
-                                unit.power_reserve - execution_result.execution_cost,
-                            )
-                            self._total_program_execution_cost += execution_result.execution_cost
-                            if decoded_successor_arch is None:
-                                self._record_event(Event(
-                                    tick=self.tick_count,
-                                    event_type=EventType.FABRICATION_FAILED,
-                                    unit_id=unit.unit_id,
-                                    data={
-                                        "cause": "successor_program_invalid",
-                                        "execution_status": execution_result.status,
-                                        "program_digest": successor_program.program_digest(),
-                                    },
-                                ))
-                                continue
 
-                        # Create successor unit from the exact template generated
-                        from machine_sim.agents.unit import MachineUnitImpl
-                        tmpl = result.template
-                        successor = MachineUnitImpl(
-                            unit_id=result.successor_id,
-                            position=result.placement,
-                            signal_enabled=tmpl.signal_enabled,
-                            signal_pattern_count=tmpl.signal_pattern_count,
-                            signal_energy_cost=tmpl.signal_energy_cost,
-                            signal_default_radius=tmpl.signal_default_radius,
-                            signal_default_decay=tmpl.signal_default_decay,
-                            signal_default_duration=tmpl.signal_default_duration,
-                            adaptive_enabled=tmpl.adaptive_enabled,
-                            neural_controller_enabled=self.config.neural_controller_enabled,
-                            neural_controller_mode=self.config.neural_controller_mode,
-                            neural_plasticity_enabled=self.config.neural_plasticity_enabled,
-                            neural_hidden_size=self.config.neural_hidden_size,
-                            neural_plasticity_rate=self.config.neural_plasticity_rate,
-                            neural_seed=self.config.seed,
-                            neural_architecture_descriptor=(
-                                decoded_successor_arch if program_mode else None
-                            ),
-                            design_program=successor_program,
-                            design_execution_bounds=program_execution_bounds,
-                            design_program_length_bounds=(
-                                (self.config.program_min_length, self.config.program_max_length)
-                                if program_mode else None
-                            ),
+                    new_units.append(successor)
+
+                    # M22A: the successor is fully assembled and about to
+                    # be registered — commit the success-only fabrication
+                    # state exactly once (success counter, lineage record,
+                    # source successful-fabrication tick).
+                    if pending is not None:
+                        self.fabrication_engine.commit_fabrication(pending)
+
+                    # M19: Deduct architecture fabrication cost from source unit
+                    if (self.config.neural_architecture_variation_enabled
+                            and successor_arch is not None):
+                        from machine_sim.agents.neural_architecture import compute_fabrication_cost, NeuralArchitectureConfig as _ArchCfgFab
+                        arch_fab_cfg = NeuralArchitectureConfig(
+                            neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                            neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
                         )
-                        successor.max_power = tmpl.max_power
-                        successor.power_reserve = tmpl.max_power
-                        successor.SENSOR_RANGE = tmpl.sensor_range
-                        successor._generation_index = getattr(unit, '_generation_index', 0) + 1
+                        arch_fab = compute_fabrication_cost(successor_arch, arch_fab_cfg)
+                        unit.power_reserve = max(0.0, unit.power_reserve - arch_fab)
 
-                        # Scale component degradation rates for successor
-                        if self.config.component_degradation_scale != 1.0:
-                            for comp in successor.components.values():
-                                comp.degradation_rate *= self.config.component_degradation_scale
-
-                        # Generate and apply calibration capsule
-                        if self.capsule_manager.enabled:
-                            capsule = self.capsule_manager.generate_and_store(
-                                unit, self.world, result.successor_id, self.tick_count
-                            )
-                            self.capsule_manager.generator.apply_warm_start(capsule, successor)
-                            result.capsule = capsule
-
-                        # Transfer adaptive state from source to successor
-                        if (self.config.adaptive_enabled
-                                and hasattr(unit, '_adaptive_controller')
-                                and unit._adaptive_controller.enabled
-                                and successor.adaptive_enabled):
-                            successor_state = unit._adaptive_controller.transfer_to_successor(
-                                unit._adaptive_state, self.rng, variation=0.05
-                            )
-                            successor._adaptive_state = successor_state
-                            # Record descendant adaptive-state transfer
-                            if self.config.long_run_adaptation_enabled:
-                                if not hasattr(self, '_descendant_transfer_trace'):
-                                    self._descendant_transfer_trace = []
-                                source_d = unit._adaptive_state.to_dict()
-                                succ_d = successor_state.to_dict()
-                                delta = {k: succ_d[k] - source_d[k] for k in source_d}
-                                self._descendant_transfer_trace.append({
-                                    "tick": self.tick_count,
-                                    "source_unit_id": unit.unit_id,
-                                    "successor_unit_id": result.successor_id,
-                                    "source_generation": getattr(unit, '_generation_index', 0),
-                                    "successor_generation": successor._generation_index,
-                                    "source_adaptive_summary": {k: round(v, 4) for k, v in source_d.items()},
-                                    "successor_adaptive_summary": {k: round(v, 4) for k, v in succ_d.items()},
-                                    "bounded_delta_summary": {k: round(v, 4) for k, v in delta.items()},
-                                })
-                            # Record generation-indexed transfer trace
-                            if self.config.long_run_adaptation_enabled and self.config.multi_generation_trace_enabled:
-                                self.multi_gen_trace.record_transfer(
-                                    tick=self.tick_count,
-                                    source_unit_id=unit.unit_id,
-                                    successor_unit_id=result.successor_id,
-                                    source_generation_index=getattr(unit, '_generation_index', 0),
-                                    successor_generation_index=successor._generation_index,
-                                    source_adaptive_state=unit._adaptive_state.to_dict(),
-                                    successor_adaptive_state=successor_state.to_dict(),
-                                    source_lifetime_ticks=self.tick_count,
-                                    successor_initial_power_ratio=successor._power_ratio(),
-                                )
-
-                        # Transfer neural controller state from source to successor
-                        if (self.config.neural_controller_enabled
-                                and hasattr(unit, '_neural_controller')
-                                and unit._neural_controller is not None
-                                and hasattr(successor, '_neural_controller')
-                                and successor._neural_controller is not None):
-                            import random as _nc_rng
-                            nc_rng = _nc_rng.Random(self.tick_count * 7 + stable_seed("nc_transfer", unit.unit_id))
-
-                            # M19: Architecture variation. In M22 program mode
-                            # the successor architecture comes from its decoded
-                            # program, so descriptor variation is not applied
-                            # to the same successor (no double mutation).
-                            arch_variation_enabled = (
-                                self.config.neural_architecture_variation_enabled
-                                and not program_mode
-                            )
-                            source_arch = getattr(unit, '_architecture_descriptor', None)
-                            successor_arch = None
-                            transition_record = None
-
-                            if arch_variation_enabled and source_arch is not None:
-                                from machine_sim.agents.neural_architecture import (
-                                    vary_architecture, NeuralArchitectureConfig,
-                                    resize_state_for_successor, compute_recurrence_mask,
-                                    compute_processing_cost, compute_fabrication_cost,
-                                    NeuralArchitectureTransition,
-                                )
-                                arch_cfg = NeuralArchitectureConfig(
-                                    minimum_hidden_size=self.config.minimum_hidden_size,
-                                    maximum_hidden_size=self.config.maximum_hidden_size,
-                                    minimum_recurrent_density=self.config.minimum_recurrent_density,
-                                    maximum_recurrent_density=self.config.maximum_recurrent_density,
-                                    minimum_plasticity_rate=self.config.minimum_plasticity_rate,
-                                    maximum_plasticity_rate=self.config.maximum_plasticity_rate,
-                                    hidden_size_variation_probability=self.config.hidden_size_variation_probability,
-                                    hidden_size_variation_max_step=self.config.hidden_size_variation_max_step,
-                                    recurrent_density_variation_probability=self.config.recurrent_density_variation_probability,
-                                    recurrent_density_variation_max_step=self.config.recurrent_density_variation_max_step,
-                                    plasticity_rate_variation_probability=self.config.plasticity_rate_variation_probability,
-                                    plasticity_rate_variation_max_step=self.config.plasticity_rate_variation_max_step,
-                                    neural_processing_base_cost=self.config.neural_processing_base_cost,
-                                    neural_hidden_unit_cost=self.config.neural_hidden_unit_cost,
-                                    neural_recurrent_connection_cost=self.config.neural_recurrent_connection_cost,
-                                    neural_plastic_update_cost=self.config.neural_plastic_update_cost,
-                                    neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
-                                    neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
-                                )
-
-                                successor_arch = vary_architecture(
-                                    source_arch, arch_cfg, nc_rng,
-                                    self.tick_count, index=len(self.units))
-
-                                # Dimension-changing transfer
-                                src_state = unit._neural_controller.state
-                                new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
-                                    resize_state_for_successor(
-                                        src_state.hidden_state, src_state.W_in, src_state.W_rec,
-                                        src_state.W_out, src_state.W_param, src_state.b_hidden,
-                                        src_state.recurrent_mask, successor_arch, source_arch, nc_rng,
-                                        weight_bound=2.0)
-
-                                from machine_sim.agents.neural_controller import NeuralProcessingState
-                                successor_state = NeuralProcessingState(
-                                    hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
-                                    W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
-                                    c_action=list(src_state.c_action),
-                                    c_param=list(src_state.c_param),
-                                    recurrent_mask=new_mask,
-                                )
-                                successor._neural_controller.set_state(successor_state)
-                                successor._architecture_descriptor = successor_arch
-
-                                # Compute costs
-                                fab_cost = compute_fabrication_cost(successor_arch, arch_cfg)
-                                self._total_fabrication_cost += fab_cost
-
-                                # Record architecture transition
-                                old_active = source_arch.active_recurrent_connections()
-                                new_active = successor_arch.active_recurrent_connections()
-                                delta_h = successor_arch.hidden_size - source_arch.hidden_size
-
-                                transition_record = NeuralArchitectureTransition(
-                                    tick=self.tick_count,
-                                    source_unit_id=unit.unit_id,
-                                    successor_unit_id=result.successor_id,
-                                    source_generation=getattr(unit, '_generation_index', 0),
-                                    successor_generation=successor._generation_index,
-                                    source_architecture_id=source_arch.architecture_id,
-                                    successor_architecture_id=successor_arch.architecture_id,
-                                    source_hidden_size=source_arch.hidden_size,
-                                    successor_hidden_size=successor_arch.hidden_size,
-                                    hidden_size_delta=delta_h,
-                                    source_recurrent_density=source_arch.recurrent_density,
-                                    successor_recurrent_density=successor_arch.recurrent_density,
-                                    recurrent_density_delta=successor_arch.recurrent_density - source_arch.recurrent_density,
-                                    source_plasticity_rate=source_arch.plasticity_rate,
-                                    successor_plasticity_rate=successor_arch.plasticity_rate,
-                                    plasticity_rate_delta=successor_arch.plasticity_rate - source_arch.plasticity_rate,
-                                    retained_hidden_count=len(retained),
-                                    added_hidden_count=max(0, delta_h),
-                                    removed_hidden_count=max(0, -delta_h),
-                                    active_recurrent_connection_delta=new_active - old_active,
-                                    processing_cost_estimate=compute_processing_cost(successor_arch, arch_cfg),
-                                    fabrication_complexity_cost=fab_cost,
-                                    variation_applied=True,
-                                )
-                                self._architecture_transfer_trace.append(transition_record.to_dict())
-                            elif program_mode:
-                                # M22: dimension-aware state transfer from the
-                                # decoded successor architecture (M19 transfer
-                                # semantics preserved, descriptor variation
-                                # bypassed).
-                                from machine_sim.agents.neural_architecture import (
-                                    NeuralArchitectureConfig as _ResizeArchCfg,
-                                    compute_fabrication_cost,
-                                    resize_state_for_successor,
-                                )
-                                src_state = unit._neural_controller.state
-                                new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
-                                    resize_state_for_successor(
-                                        src_state.hidden_state, src_state.W_in, src_state.W_rec,
-                                        src_state.W_out, src_state.W_param, src_state.b_hidden,
-                                        src_state.recurrent_mask, decoded_successor_arch, source_arch, nc_rng,
-                                        weight_bound=2.0)
-
-                                from machine_sim.agents.neural_controller import NeuralProcessingState
-                                successor_state = NeuralProcessingState(
-                                    hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
-                                    W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
-                                    c_action=list(src_state.c_action),
-                                    c_param=list(src_state.c_param),
-                                    recurrent_mask=new_mask,
-                                )
-                                successor._neural_controller.set_state(successor_state)
-                                successor._architecture_descriptor = decoded_successor_arch
-
-                                resize_cfg = _ResizeArchCfg(
-                                    neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
-                                    neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
-                                )
-                                program_fab_cost = compute_fabrication_cost(
-                                    decoded_successor_arch, resize_cfg
-                                )
-                                unit.power_reserve = max(
-                                    0.0, unit.power_reserve - program_fab_cost
-                                )
-                                self._total_fabrication_cost += program_fab_cost
-                            else:
-                                # Legacy transfer (no architecture variation)
-                                source_nc_state = unit._neural_controller.state.copy()
-                                successor_nc_state = unit._neural_controller.transfer_to_successor(nc_rng, variation=0.05)
-                                successor._neural_controller.state = successor_nc_state
-
-                            # Record neural successor transfer trace (always)
-                            source_nc = unit._neural_controller.state
-                            succ_nc = successor._neural_controller.state
-                            if self.config.long_run_adaptation_enabled:
-                                param_delta = unit._neural_controller.get_parameter_delta(succ_nc)
-                                self._neural_successor_transfer_trace.append({
-                                    "tick": self.tick_count,
-                                    "source_unit_id": unit.unit_id,
-                                    "successor_unit_id": result.successor_id,
-                                    "source_generation": getattr(unit, '_generation_index', 0),
-                                    "successor_generation": successor._generation_index,
-                                    "source_hidden_summary": {
-                                        "mean": round(sum(source_nc.hidden_state) / len(source_nc.hidden_state), 6) if source_nc.hidden_state else 0.0,
-                                    },
-                                    "successor_hidden_summary": {
-                                        "mean": round(sum(succ_nc.hidden_state) / len(succ_nc.hidden_state), 6) if succ_nc.hidden_state else 0.0,
-                                    },
-                                    "parameter_delta": param_delta,
-                                    "transfer_variation": 0.05,
-                                })
-
-                        new_units.append(successor)
-
-                        # M19: Deduct architecture fabrication cost from source unit
-                        if (self.config.neural_architecture_variation_enabled
-                                and successor_arch is not None):
-                            from machine_sim.agents.neural_architecture import compute_fabrication_cost, NeuralArchitectureConfig as _ArchCfgFab
-                            arch_fab_cfg = NeuralArchitectureConfig(
-                                neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
-                                neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
-                            )
-                            arch_fab = compute_fabrication_cost(successor_arch, arch_fab_cfg)
-                            unit.power_reserve = max(0.0, unit.power_reserve - arch_fab)
-
-                        self._record_event(Event(
-                            tick=self.tick_count,
-                            event_type=EventType.FABRICATION_SUCCEEDED,
-                            unit_id=unit.unit_id,
-                            data={
-                                "successor_id": result.successor_id,
-                                "placement": list(result.placement),
-                                "material_cost": result.material_cost,
-                                "power_cost": result.power_cost,
-                                "max_power": tmpl.max_power,
-                                "sensor_range": tmpl.sensor_range,
-                                "capsule_applied": self.capsule_manager.enabled,
-                            },
-                        ))
-                    elif result.failure_cause:
-                        self._record_event(Event(
-                            tick=self.tick_count,
-                            event_type=EventType.FABRICATION_FAILED,
-                            unit_id=unit.unit_id,
-                            data={"cause": result.failure_cause},
-                        ))
+                    self._record_event(Event(
+                        tick=self.tick_count,
+                        event_type=EventType.FABRICATION_SUCCEEDED,
+                        unit_id=unit.unit_id,
+                        data={
+                            "successor_id": result.successor_id,
+                            "placement": list(result.placement),
+                            "material_cost": result.material_cost,
+                            "power_cost": result.power_cost,
+                            "max_power": tmpl.max_power,
+                            "sensor_range": tmpl.sensor_range,
+                            "capsule_applied": self.capsule_manager.enabled,
+                        },
+                    ))
 
             # Register new units
             for new_unit in new_units:

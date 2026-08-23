@@ -52,6 +52,55 @@ class FabricationResult:
     design_distance: float = 0.0
 
 
+@dataclass
+class PendingFabrication:
+    """Reservation produced by :meth:`prepare_fabricate`.
+
+    Carries everything needed to assemble a successor, but none of the
+    success-only accounting has been committed yet: no success increment, no
+    lineage record, and no successful-fabrication tick on the source.
+
+    Successor-ID policy (documented option A): the definitive ID is reserved
+    during the attempt phase; a failed assembly leaves a gap in the ID
+    sequence. Reserved IDs never appear in lineage records or summaries as if
+    a unit existed.
+    """
+
+    success: bool
+    source_unit: Any
+    source_id: str
+    successor_id: str
+    placement: Tuple[int, int]
+    template: DesignTemplate
+    fabrication_tick: int
+    material_cost: float
+    power_cost: float
+    source_generation: int
+
+    def to_result(self) -> FabricationResult:
+        return FabricationResult(
+            success=True,
+            successor_id=self.successor_id,
+            source_id=self.source_id,
+            placement=self.placement,
+            template=self.template,
+            material_cost=self.material_cost,
+            power_cost=self.power_cost,
+        )
+
+
+def record_program_failure(fabricator: Any, cause: str = "successor_program_invalid") -> None:
+    """Record a program-invalid assembly attempt in the failure counters.
+
+    Called by the engine after prerequisite/consumption phases succeeded but
+    program interpretation rejected assembly. Attempts were already counted by
+    :meth:`prepare_fabricate`; successes and lineage are untouched.
+    """
+    fabricator._fabrication_failures[cause] = (
+        fabricator._fabrication_failures.get(cause, 0) + 1
+    )
+
+
 class FabricationEngine:
     """Machine-native fabrication process.
 
@@ -141,15 +190,27 @@ class FabricationEngine:
                         candidates.append((nx, ny))
         return candidates[0] if candidates else None
 
-    def fabricate(
+    def prepare_fabricate(
         self,
         source_unit: Any,
         current_tick: int,
         world: Any,
         current_population: int,
         rng: random.Random,
-    ) -> FabricationResult:
-        """Attempt to fabricate a successor unit."""
+    ) -> Any:
+        """Attempt phase + resource consumption / placement reservation.
+
+        Counts the attempt, enforces prerequisites, consumes the base power
+        and material costs exactly once, reserves a successor ID (option A:
+        gaps after failed assembly are allowed), and returns either a failure
+        :class:`FabricationResult` or an uncommitted
+        :class:`PendingFabrication`.
+
+        Success-only state — success counter, lineage record, and the source's
+        successful-fabrication tick — is deliberately NOT touched here; call
+        :meth:`commit_fabrication` once the successor has actually been
+        assembled.
+        """
         self._fabrication_attempts += 1
         can_fab, cause = self.can_fabricate(
             source_unit, current_tick, world, current_population
@@ -202,37 +263,75 @@ class FabricationEngine:
         # Create design template with variation (single source of truth)
         template = self._create_template(source_unit, rng)
 
-        # Generate successor ID
+        # Reserve successor ID (documented option A: failed assembly may
+        # leave gaps; reserved IDs never enter lineage records or summaries).
         self._next_unit_id += 1
         successor_id = f"unit-{self._next_unit_id:04d}"
 
-        # Record lineage
-        source_gen = getattr(source_unit, '_generation_index', 0)
-        lineage = LineageRecord(
-            source_unit_id=source_unit.unit_id,
-            successor_unit_id=successor_id,
-            source_generation=source_gen,
-            successor_generation=source_gen + 1,
+        return PendingFabrication(
+            success=True,
+            source_unit=source_unit,
+            source_id=source_unit.unit_id,
+            successor_id=successor_id,
+            placement=placement,
+            template=template,
             fabrication_tick=current_tick,
             material_cost=self.material_cost,
             power_cost=self.power_cost,
+            source_generation=getattr(source_unit, '_generation_index', 0),
+        )
+
+    def commit_fabrication(self, pending: PendingFabrication) -> FabricationResult:
+        """Final successful-construction commit.
+
+        Appends exactly one lineage record, increments the success counter
+        once, and advances the source's successful-fabrication tick. Called
+        only when an assembled successor is about to be registered.
+        """
+        lineage = LineageRecord(
+            source_unit_id=pending.source_id,
+            successor_unit_id=pending.successor_id,
+            source_generation=pending.source_generation,
+            successor_generation=pending.source_generation + 1,
+            fabrication_tick=pending.fabrication_tick,
+            material_cost=pending.material_cost,
+            power_cost=pending.power_cost,
         )
         self._lineage_records.append(lineage)
 
-        # Mark source as having fabricated
-        source_unit._last_fabrication_tick = current_tick
+        pending.source_unit._last_fabrication_tick = pending.fabrication_tick
 
         self._fabrication_successes += 1
 
         return FabricationResult(
             success=True,
-            successor_id=successor_id,
-            source_id=source_unit.unit_id,
-            placement=placement,
-            template=template,
-            material_cost=self.material_cost,
-            power_cost=self.power_cost,
+            successor_id=pending.successor_id,
+            source_id=pending.source_id,
+            placement=pending.placement,
+            template=pending.template,
+            material_cost=pending.material_cost,
+            power_cost=pending.power_cost,
         )
+
+    def fabricate(
+        self,
+        source_unit: Any,
+        current_tick: int,
+        world: Any,
+        current_population: int,
+        rng: random.Random,
+    ) -> FabricationResult:
+        """Legacy single-call path: prepare and immediately commit.
+
+        Identical outcomes to the pre-M22A implementation for configurations
+        without program-mode interpretation between the phases.
+        """
+        prepared = self.prepare_fabricate(
+            source_unit, current_tick, world, current_population, rng
+        )
+        if isinstance(prepared, PendingFabrication):
+            return self.commit_fabrication(prepared)
+        return prepared
 
     def _create_template(self, source_unit: Any, rng: random.Random) -> DesignTemplate:
         """Create a design template with deterministic variation."""

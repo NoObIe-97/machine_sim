@@ -658,6 +658,245 @@ def _probe_no_self_replication() -> Dict[str, bool]:
     return outcome
 
 
+# --- M22A transactional-finalization live probes -----------------------------
+
+
+def _run_m22a_scenario(program) -> Dict[str, Any]:
+    """Deterministic single-unit fabrication scenario (M22A).
+
+    Returns pre/post accounting, event lists, and exact cost snapshots around
+    the attempt phase.
+    """
+    try:
+        from machine_sim.cli.main import build_engine
+        from machine_sim.environment.resources import Resource, ResourceType
+        from machine_sim.sim.config import SimConfig
+    except ImportError:
+        return {"available": False}
+
+    config = SimConfig(
+        grid_width=8, grid_height=8, resource_density=0.0, hazard_density=0.0,
+        unit_count=1, max_ticks=60, seed=41,
+        signal_enabled=False, adaptive_enabled=False,
+        neural_controller_enabled=False, telemetry_enabled=False,
+        multi_generation_trace_enabled=False, long_run_adaptation_enabled=False,
+        fabrication_enabled=True, unit_capacity=8, fabrication_interval=3,
+        fabrication_power_cost=30.0, fabrication_material_cost=0.3,
+        capsule_enabled=False, design_program_enabled=True,
+        program_execution_budget=512, program_min_length=1, program_max_length=128,
+        program_base_cost=0.5, program_per_instruction_cost=0.01,
+        program_substitution_probability=0.0, program_operand_mutation_probability=0.0,
+        program_insertion_probability=0.0, program_deletion_probability=0.0,
+    )
+    engine = build_engine(config)
+    from machine_sim.agents.unit import MachineUnitImpl
+
+    engine.units.clear()
+    unit = MachineUnitImpl(
+        unit_id="unit-src", position=(4, 4),
+        signal_enabled=False, adaptive_enabled=False,
+        neural_controller_enabled=False, neural_seed=config.seed,
+        design_program=program,
+    )
+    unit.power_reserve = 10000.0
+    unit.max_power = 10000.0
+    engine.register_unit(unit)
+    engine.initialize()
+    engine.world.grid[(4, 4)].resources["component_scrap"] = Resource(
+        resource_type=ResourceType.COMPONENT_SCRAP, quantity=50.0
+    )
+    unit._last_fabrication_tick = -999
+    unit._last_fabrication_attempt_tick = -999
+
+    snapshots: Dict[str, Any] = {}
+    fabricator = engine.fabrication_engine
+    original_prepare = fabricator.prepare_fabricate
+
+    def snapshotting_prepare(source_unit, current_tick, world, population, rng):
+        snapshots["pre_power"] = source_unit.power_reserve
+        scrap = world.grid[(4, 4)].resources.get("component_scrap")
+        snapshots["pre_material"] = scrap.quantity if scrap else None
+        snapshots["tick"] = current_tick
+        return original_prepare(source_unit, current_tick, world, population, rng)
+
+    fabricator.prepare_fabricate = snapshotting_prepare  # type: ignore[method-assign]
+
+    def occupied():
+        return sum(1 for cell in engine.world.grid.values() if cell.unit_id is not None)
+
+    before = {
+        "attempts": fabricator._fabrication_attempts,
+        "successes": fabricator._fabrication_successes,
+        "lineage": len(fabricator._lineage_records),
+        "failures": dict(fabricator._fabrication_failures),
+        "units": len(engine.units),
+        "occupied": occupied(),
+        "marker": unit._last_fabrication_tick,
+    }
+    engine.tick()
+    succeeded_events = [
+        e for e in engine.event_log.all_events()
+        if e.event_type.name == "FABRICATION_SUCCEEDED"
+    ]
+    failed_invalid_events = [
+        e for e in engine.event_log.all_events()
+        if e.event_type.name == "FABRICATION_FAILED"
+        and e.data.get("cause") == "successor_program_invalid"
+    ]
+    failed_other_events = [
+        e for e in engine.event_log.all_events()
+        if e.event_type.name == "FABRICATION_FAILED"
+        and e.data.get("cause") != "successor_program_invalid"
+    ]
+    after = {
+        "attempts": fabricator._fabrication_attempts,
+        "successes": fabricator._fabrication_successes,
+        "lineage": len(fabricator._lineage_records),
+        "failures": dict(fabricator._fabrication_failures),
+        "units": len(engine.units),
+        "occupied": occupied(),
+        "marker": unit._last_fabrication_tick,
+        "attempt_marker": unit._last_fabrication_attempt_tick,
+    }
+    lineage_ids = [r.successor_unit_id for r in fabricator._lineage_records]
+    return {
+        "available": True,
+        "before": before,
+        "after": after,
+        "snapshots": snapshots,
+        "succeeded_events": succeeded_events,
+        "failed_invalid_events": failed_invalid_events,
+        "failed_other_events": failed_other_events,
+        "lineage_ids": lineage_ids,
+        "power_after": unit.power_reserve,
+        "material_after": (
+            engine.world.grid[(4, 4)].resources.get("component_scrap").quantity
+            if engine.world.grid[(4, 4)].resources.get("component_scrap") else 0.0
+        ),
+        "transfer_trace_rows": list(engine._design_program_transfer_trace),
+        "engine": engine,
+    }
+
+
+def _probe_m22a_failure_accounting() -> Dict[str, bool]:
+    """Invalid-program attempt: attempts +1; successes/lineage unchanged;
+    deterministic failure cause recorded; no unit; no occupancy; marker
+    untouched; exactly one FAILED event with the cause and zero SUCCEEDED."""
+    try:
+        from machine_sim.agents.design_program import DesignProgram
+
+        empty = DesignProgram(instructions=[])
+    except ImportError:
+        return {"accounting": False, "events": False, "phantom": False}
+
+    scenario = _run_m22a_scenario(empty)
+    if not scenario.get("available"):
+        return {"accounting": False, "events": False, "phantom": False}
+    before, after = scenario["before"], scenario["after"]
+
+    accounting = bool(
+        after["attempts"] == before["attempts"] + 1
+        and after["successes"] == before["successes"]
+        and after["failures"].get("successor_program_invalid") == 1
+    )
+    events = bool(
+        len(scenario["failed_invalid_events"]) == 1
+        and not scenario["succeeded_events"]
+        and not scenario["failed_other_events"]
+    )
+    phantom = bool(
+        after["lineage"] == before["lineage"]
+        and after["units"] == before["units"]
+        and after["occupied"] == before["occupied"]
+        and after["marker"] == before["marker"]
+        and not scenario["lineage_ids"]
+    )
+    return {"accounting": accounting, "events": events, "phantom": phantom}
+
+
+def _probe_m22a_valid_finalization_and_sequence() -> Dict[str, bool]:
+    """Valid attempt finalizes success/lineage/unit/occupancy/marker exactly
+    once; a failed-then-valid sequence leaves no phantom lineage edge."""
+    try:
+        from machine_sim.agents.design_program import (
+            DesignProgram,
+            canonical_baseline_program,
+        )
+    except ImportError:
+        return {"finalization": False, "sequence": False}
+
+    valid = canonical_baseline_program()
+    scenario = _run_m22a_scenario(valid)
+    if not scenario.get("available"):
+        return {"finalization": False, "sequence": False}
+    before, after = scenario["before"], scenario["after"]
+    finalization = bool(
+        after["attempts"] == before["attempts"] + 1
+        and after["successes"] == before["successes"] + 1
+        and after["lineage"] == before["lineage"] + 1
+        and after["units"] == before["units"] + 1
+        and after["occupied"] == before["occupied"] + 1
+        and after["marker"] == scenario["snapshots"]["tick"]
+        and len(scenario["succeeded_events"]) == 1
+        and not scenario["failed_invalid_events"]
+        and len(scenario["lineage_ids"]) == 1
+    )
+
+    # Sequence: failed attempt, then valid repair attempt.
+    empty = DesignProgram(instructions=[])
+    fail_scenario = _run_m22a_scenario(empty)
+    provisional_ids = {
+        row.get("successor_unit_id")
+        for row in fail_scenario["transfer_trace_rows"]
+    }
+    sequence_engine = fail_scenario["engine"]
+    unit = sequence_engine.units[0]
+    unit._design_program = canonical_baseline_program()
+    unit._last_fabrication_attempt_tick = -999
+    unit._last_fabrication_tick = -999
+    while sequence_engine.tick_count < 40:
+        pre_units = len(sequence_engine.units)
+        sequence_engine.tick()
+        if len(sequence_engine.units) > pre_units:
+            break
+    fabricator = sequence_engine.fabrication_engine
+    lineage_ids = [r.successor_unit_id for r in fabricator._lineage_records]
+    generations = {r.successor_generation for r in fabricator._lineage_records}
+    successors = [u for u in sequence_engine.units if u.unit_id != "unit-src"]
+    sequence_ok = bool(
+        fabricator._fabrication_successes == 1
+        and len(fabricator._lineage_records) == 1
+        and lineage_ids
+        and all(lid not in provisional_ids for lid in lineage_ids)
+        and generations == {1}
+        and len(successors) == 1
+        and successors[0]._generation_index == 1
+    )
+    return {"finalization": finalization, "sequence": sequence_ok}
+
+
+def _probe_m22a_cost_exactness() -> bool:
+    try:
+        from machine_sim.agents.design_program import DesignProgram
+
+        empty = DesignProgram(instructions=[])
+    except ImportError:
+        return False
+
+    scenario = _run_m22a_scenario(empty)
+    if not scenario.get("available"):
+        return False
+    # Empty program: execution cost is base-only (0.5); no per-instruction
+    # term applies. Base fabrication power (30.0) consumed once; material
+    # (0.3) consumed once; nothing refunded on program failure.
+    expected_power = scenario["snapshots"]["pre_power"] - 30.0 - 0.5
+    expected_material = scenario["snapshots"]["pre_material"] - 0.3
+    return bool(
+        abs(scenario["power_after"] - expected_power) < 1e-9
+        and abs(scenario["material_after"] - expected_material) < 1e-9
+    )
+
+
 # --- judge -------------------------------------------------------------------
 
 
@@ -884,6 +1123,28 @@ def judge(output_dir: str) -> Dict[str, Any]:
     )
     checks["variable_run_demonstrations_check"] = (
         "PASS" if demonstrations_ok else "FAIL"
+    )
+
+    # 26-31. M22A transactional finalization (live probes)
+    failure_accounting = _probe_m22a_failure_accounting()
+    checks["m22a_program_failure_accounting_check"] = (
+        "PASS" if failure_accounting["accounting"] else "FAIL"
+    )
+    checks["m22a_failure_event_exactness_check"] = (
+        "PASS" if failure_accounting["events"] else "FAIL"
+    )
+    checks["m22a_phantom_lineage_prevention_check"] = (
+        "PASS" if failure_accounting["phantom"] else "FAIL"
+    )
+    checks["m22a_program_cost_accounting_exact_check"] = (
+        "PASS" if _probe_m22a_cost_exactness() else "FAIL"
+    )
+    sequence_probe = _probe_m22a_valid_finalization_and_sequence()
+    checks["m22a_success_finalization_once_check"] = (
+        "PASS" if sequence_probe["finalization"] else "FAIL"
+    )
+    checks["m22a_failed_then_valid_sequence_check"] = (
+        "PASS" if sequence_probe["sequence"] else "FAIL"
     )
 
     non_pass = [name for name, result in checks.items() if result != "PASS"]
