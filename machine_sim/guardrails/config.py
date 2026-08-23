@@ -106,6 +106,17 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "run_progress_interval",
     "run_digest_enabled",
     "run_status_surface_enabled",
+    # M22 design-program substrate
+    "design_program_enabled",
+    "program_execution_budget",
+    "program_min_length",
+    "program_max_length",
+    "program_base_cost",
+    "program_per_instruction_cost",
+    "program_substitution_probability",
+    "program_operand_mutation_probability",
+    "program_insertion_probability",
+    "program_deletion_probability",
 }
 
 # Allowed memory event_type labels

@@ -81,6 +81,40 @@ def _register_initial_units(engine: SimEngine, cfg: SimConfig) -> None:
                 plasticity_enabled=cfg.neural_plasticity_enabled,
             )
 
+        # M22: program-backed initial units carry a canonical baseline design
+        # program; the decoded descriptor replaces the legacy descriptor.
+        design_program = None
+        program_bounds = None
+        program_length_bounds = None
+        if getattr(cfg, "design_program_enabled", False):
+            from machine_sim.agents.design_program import (
+                DesignExecutionBounds,
+                canonical_baseline_program,
+            )
+            from machine_sim.agents.neural_architecture import (
+                NeuralArchitectureConfig as _ArchCfgBounds,
+            )
+            program_bounds = DesignExecutionBounds.from_architecture_config(
+                _ArchCfgBounds(
+                    minimum_hidden_size=cfg.minimum_hidden_size,
+                    maximum_hidden_size=cfg.maximum_hidden_size,
+                    initial_hidden_size=cfg.initial_hidden_size,
+                    minimum_recurrent_density=cfg.minimum_recurrent_density,
+                    maximum_recurrent_density=cfg.maximum_recurrent_density,
+                    initial_recurrent_density=cfg.initial_recurrent_density,
+                    minimum_plasticity_rate=cfg.minimum_plasticity_rate,
+                    maximum_plasticity_rate=cfg.maximum_plasticity_rate,
+                    initial_plasticity_rate=cfg.neural_plasticity_rate,
+                ),
+                execution_budget=cfg.program_execution_budget,
+                program_base_cost=cfg.program_base_cost,
+                program_per_instruction_cost=cfg.program_per_instruction_cost,
+            )
+            program_length_bounds = (cfg.program_min_length, cfg.program_max_length)
+            design_program = canonical_baseline_program(
+                plasticity_rate=cfg.neural_plasticity_rate
+            )
+
         unit = MachineUnitImpl(
             unit_id=f"unit-{i:03d}",
             position=pos,
@@ -99,6 +133,9 @@ def _register_initial_units(engine: SimEngine, cfg: SimConfig) -> None:
             neural_plasticity_rate=cfg.neural_plasticity_rate,
             neural_seed=cfg.seed,
             neural_architecture_descriptor=arch_desc,
+            design_program=design_program,
+            design_execution_bounds=program_bounds,
+            design_program_length_bounds=program_length_bounds,
         )
         if cfg.long_run_adaptation_enabled:
             unit.max_power = 10000
@@ -148,6 +185,9 @@ def run(config: str, ticks: int | None, seed: int | None, output: str | None,
     if resume_from:
         from machine_sim.sim.run_control import resume_controller
         controller = resume_controller(Path(output), Path(resume_from), cfg.max_ticks)
+        # Mirror fresh-run behavior: a controlled run always advances the
+        # M20 digest chain regardless of the config default.
+        controller.run_digest_enabled = True
         if deep_digest_interval is not None:
             controller.deep_digest_interval = max(1, int(deep_digest_interval))
             controller.deep_digest_path = Path(deep_digest_trace)
@@ -1989,6 +2029,68 @@ def benchmark_compare(baseline: str, optimized: str, output: str,
         f"met={report['meets_required_speedup']})"
     )
     if not report["meets_required_speedup"]:
+        raise SystemExit(1)
+
+
+@cli.command("m22-demo")
+@click.option("--compatibility-config", type=click.Path(exists=True),
+              default="configs/milestone_22_compatibility.toml")
+@click.option("--variable-config", type=click.Path(exists=True),
+              default="configs/milestone_22_variable.toml")
+@click.option("--pause-resume-config", type=click.Path(exists=True),
+              default="configs/milestone_22_pause_resume.toml")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m22")
+@click.option("--ticks", "-t", type=int, default=None,
+              help="Override the variable-run tick count.")
+@click.option("--sample-interval", "-i", type=int, default=100)
+def m22_demo(compatibility_config: str, variable_config: str, pause_resume_config: str,
+             output: str, ticks: int | None, sample_interval: int) -> None:
+    """Run the M22 demonstrations and write all design-program artifacts."""
+    from machine_sim.perf.m22_demo import (
+        run_compatibility_demo,
+        run_decode_performance,
+        run_pause_resume_demo,
+        run_variable_demo,
+    )
+
+    output_dir = Path(output)
+    compatibility = run_compatibility_demo(Path(compatibility_config), output_dir)
+    click.echo(
+        f"Compatibility: compatible={compatibility['compatible']} "
+        f"samples={compatibility['sample_count']}"
+    )
+    run_summary = run_variable_demo(Path(variable_config), output_dir, ticks)
+    click.echo(
+        f"Variable run: {run_summary['ticks']} ticks at "
+        f"{run_summary['ticks_per_second']} ticks/s; "
+        f"all_demonstrations_met={run_summary['all_demonstrations_met']}"
+    )
+    if not run_summary["all_demonstrations_met"]:
+        missing = [k for k, v in run_summary["evidence"].items() if not v]
+        click.echo(f"Missing evidence: {missing}")
+    pause = run_pause_resume_demo(
+        Path(pause_resume_config), output_dir, max(1, sample_interval)
+    )
+    click.echo(
+        f"Pause/resume: equivalent={pause['equivalent']} "
+        f"pause_tick={pause['pause_tick']} mismatches={pause['mismatch_count']}"
+    )
+    performance = run_decode_performance()
+    performance["compatibility_compatible"] = compatibility["compatible"]
+    performance["pause_resume_equivalent"] = pause["equivalent"]
+    from machine_sim.sim.checkpoint import config_digest as _cfg_digest
+
+    performance["pause_resume_config_digest"] = _cfg_digest(
+        SimConfig.from_toml(Path(pause_resume_config))
+    )
+    (output_dir / "design_program_performance.json").write_text(
+        json.dumps(performance, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    click.echo(
+        f"Decode throughput: canonical={performance['canonical_programs_per_second']} "
+        f"programs/s"
+    )
+    if not (compatibility["compatible"] and pause["equivalent"]):
         raise SystemExit(1)
 
 

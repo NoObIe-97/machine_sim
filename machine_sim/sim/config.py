@@ -92,6 +92,18 @@ class SimConfig:
     run_digest_enabled: bool = False
     run_status_surface_enabled: bool = False
 
+    # M22: Executable per-unit design-program substrate
+    design_program_enabled: bool = False
+    program_execution_budget: int = 512
+    program_min_length: int = 1
+    program_max_length: int = 128
+    program_base_cost: float = 0.5
+    program_per_instruction_cost: float = 0.01
+    program_substitution_probability: float = 0.0
+    program_operand_mutation_probability: float = 0.0
+    program_insertion_probability: float = 0.0
+    program_deletion_probability: float = 0.0
+
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:
         with open(path, "rb") as f:

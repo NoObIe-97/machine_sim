@@ -1,0 +1,89 @@
+# M21 reference family B: neural + architecture-variation baseline (5,200 ticks).
+# Full accepted M19/M20 behavior path: neural controllers, recurrent masks,
+# architecture variation with dimension-changing successor transfer, fabrication,
+# calibration capsules, multi-generation traces.
+[simulation]
+grid_width = 120
+grid_height = 120
+resource_density = 0.25
+hazard_density = 0.01
+unit_count = 24
+power_drain_rate = 0.08
+max_ticks = 1200
+seed = 42
+component_degradation_scale = 0.2
+
+signal_enabled = true
+signal_pattern_count = 4
+signal_energy_cost = 1.0
+signal_default_radius = 60
+signal_default_decay = 0.01
+signal_default_duration = 40
+signal_observation_window = 20
+
+adaptive_enabled = true
+
+neural_controller_enabled = true
+neural_controller_mode = "replace"
+neural_plasticity_enabled = true
+neural_hidden_size = 16
+neural_plasticity_rate = 0.01
+
+neural_architecture_variation_enabled = true
+minimum_hidden_size = 8
+initial_hidden_size = 16
+maximum_hidden_size = 48
+minimum_recurrent_density = 0.15
+initial_recurrent_density = 1.0
+maximum_recurrent_density = 1.0
+minimum_plasticity_rate = 0.0
+maximum_plasticity_rate = 0.05
+initial_architecture_policy = "uniform_baseline"
+hidden_size_variation_probability = 0.5
+hidden_size_variation_max_step = 2
+recurrent_density_variation_probability = 0.5
+recurrent_density_variation_max_step = 0.10
+plasticity_rate_variation_probability = 0.3
+plasticity_rate_variation_max_step = 0.005
+
+neural_processing_base_cost = 0.05
+neural_hidden_unit_cost = 0.002
+neural_recurrent_connection_cost = 0.001
+neural_plastic_update_cost = 0.0005
+neural_fabrication_hidden_unit_cost = 0.5
+neural_fabrication_connection_cost = 0.02
+
+fabrication_enabled = true
+capsule_enabled = true
+unit_capacity = 40
+fabrication_interval = 3
+fabrication_power_cost = 3.0
+fabrication_material_cost = 0.1
+fabrication_variation = 0.08
+fabrication_min_power_ratio = 0.05
+fabrication_min_component_health = 0.02
+
+telemetry_enabled = true
+reconciliation_enabled = false
+lineage_drift_enabled = false
+pressure_analysis_enabled = false
+signal_dynamics_enabled = false
+trace_compression_enabled = false
+trace_drift_enabled = false
+summary_consistency_enabled = false
+
+long_run_adaptation_enabled = true
+multi_generation_trace_enabled = true
+trajectory_compression_enabled = false
+
+# M22: variable-program demonstration run
+design_program_enabled = true
+program_execution_budget = 512
+program_min_length = 1
+program_max_length = 128
+program_base_cost = 0.5
+program_per_instruction_cost = 0.01
+program_substitution_probability = 0.05
+program_operand_mutation_probability = 0.05
+program_insertion_probability = 0.03
+program_deletion_probability = 0.03

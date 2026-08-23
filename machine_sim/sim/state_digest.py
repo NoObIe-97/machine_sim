@@ -286,6 +286,17 @@ def _unit_snapshot(unit: Any) -> Dict[str, Any]:
     architecture = _architecture_descriptor_snapshot(unit)
     if architecture is not None:
         snapshot["architecture_descriptor"] = architecture
+    # M22: the design program is future-causal hereditary state. Its schema,
+    # canonical instruction sequence, and digest enter the snapshot.
+    design_program = getattr(unit, "_design_program", None)
+    if design_program is not None:
+        snapshot["design_program"] = design_program.to_dict()
+        snapshot["design_program_enabled"] = bool(
+            getattr(unit, "_design_program_enabled", True)
+        )
+        execution_status = getattr(unit, "_design_program_execution_status", None)
+        if execution_status is not None:
+            snapshot["design_program_execution_status"] = str(execution_status)
     return snapshot
 
 
@@ -371,6 +382,7 @@ def semantic_state_schema() -> Dict[str, Any]:
             "neural processing config, hidden/recurrent state, all weight matrices, biases, context vectors, recurrent mask",
             "neural architecture descriptor (id, hidden size, recurrent density, plasticity rate/enabled)",
             "fabrication next_unit_id counter plus attempt/success/failure counters",
+            "per-unit design program: schema version, instruction-set version, canonical instruction sequence, program digest, program-enabled flag, recorded execution status",
             "capsule generator static bounds are covered by the config mapping",
         ],
         "excluded": [

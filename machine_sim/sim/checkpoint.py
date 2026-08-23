@@ -61,6 +61,11 @@ FIELD_EXCLUSIONS: Dict[str, Set[str]] = {
         "_total_processing_cost",
         "_total_fabrication_cost",
         "bench_unit_decisions",
+        # M22 output-only program analysis history
+        "_design_program_transfer_trace",
+        "_design_program_execution_trace",
+        "_design_program_distribution_trace",
+        "_total_program_execution_cost",
     },
     "machine_sim.analysis.correlation:SignalCorrelator": {
         "_signal_history",
@@ -137,6 +142,10 @@ FIELD_DEFAULTS: Dict[str, Dict[str, Callable[[], Any]]] = {
         "_total_processing_cost": _FLOAT,
         "_total_fabrication_cost": _FLOAT,
         "bench_unit_decisions": int,
+        "_design_program_transfer_trace": _LIST,
+        "_design_program_execution_trace": _LIST,
+        "_design_program_distribution_trace": _LIST,
+        "_total_program_execution_cost": _FLOAT,
     },
     "machine_sim.analysis.correlation:SignalCorrelator": {
         "_signal_history": _LIST,

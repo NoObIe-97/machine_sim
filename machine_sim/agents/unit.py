@@ -28,6 +28,11 @@ from machine_sim.analysis.adaptive import (
 )
 from machine_sim.agents.adaptive_control import AdaptiveController, AdaptiveStateVector
 from machine_sim.agents.neural_controller import NeuralController, NeuralProcessingConfig, stable_seed
+from machine_sim.agents.design_program import (
+    DesignExecutionBounds,
+    DesignProgram,
+    DesignProgramInterpreter,
+)
 from machine_sim.agents.neural_architecture import (
     NeuralArchitectureDescriptor,
     compute_recurrence_mask,
@@ -56,6 +61,9 @@ class MachineUnitImpl(MachineUnit):
         neural_plasticity_rate: float = 0.01,
         neural_seed: int = 42,
         neural_architecture_descriptor: Optional[NeuralArchitectureDescriptor] = None,
+        design_program: Optional[DesignProgram] = None,
+        design_execution_bounds: Optional[DesignExecutionBounds] = None,
+        design_program_length_bounds: Optional[Tuple[int, int]] = None,
     ) -> None:
         self.variant = variant or ALL_VARIANTS[0]
         self.signal_enabled = signal_enabled
@@ -76,6 +84,22 @@ class MachineUnitImpl(MachineUnit):
         self._neural_controller_mode = neural_controller_mode
         self._previous_action_name = "IDLE"
         self._neural_controller: Optional[NeuralController] = None
+        # M22: program-backed units decode their architecture from their own
+        # design program; the descriptor remains the decoded phenotype.
+        self._design_program = design_program
+        self._design_program_enabled = design_program is not None
+        if design_program is not None:
+            execution_bounds = design_execution_bounds or DesignExecutionBounds()
+            execution = DesignProgramInterpreter(execution_bounds).execute(
+                design_program,
+                program_length_bounds=design_program_length_bounds,
+            )
+            decoded = execution.decoded_architecture
+            self._design_program_execution_status = execution.status
+            if decoded is not None:
+                neural_architecture_descriptor = decoded
+        else:
+            self._design_program_execution_status = None
         self._architecture_descriptor = neural_architecture_descriptor
         if neural_controller_enabled:
             # Use architecture descriptor values if provided

@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from machine_sim.agents.base import ActionType, MachineUnit
+from machine_sim.agents.design_program import OPCODE_NAMES
 from machine_sim.agents.neural_controller import stable_seed
 from machine_sim.analysis.correlation import SignalCorrelator
 from machine_sim.analysis.field_dynamics import SignalFieldDynamics
@@ -85,6 +86,12 @@ class SimEngine:
         self._total_processing_cost: float = 0.0
         self._total_fabrication_cost: float = 0.0
         self._architecture_dist_snapshot_interval = max(1, config.max_ticks // 20)
+        # M22: design-program trace storage (output-only) and cost accumulator
+        self._design_program_transfer_trace: List[Dict[str, Any]] = []
+        self._design_program_execution_trace: List[Dict[str, Any]] = []
+        self._design_program_distribution_trace: List[Dict[str, Any]] = []
+        self._design_program_dist_snapshot_interval = max(1, config.max_ticks // 20)
+        self._total_program_execution_cost: float = 0.0
         # M20: per-tick digest chain value, advanced by the run controller and
         # carried through checkpoint capture so a resumed run continues the
         # same chain.
@@ -280,6 +287,146 @@ class SimEngine:
                         len(self.units) + len(new_units), self.rng
                     )
                     if result.success and result.template and result.placement:
+                        # M22: in program mode the successor's design program
+                        # is transferred, varied, and interpreted BEFORE
+                        # assembly. A program that does not decode aborts
+                        # assembly with machine-native consequences: costs
+                        # already consumed stay consumed, no successor is
+                        # created, and the failure is recorded.
+                        program_mode = (
+                            getattr(self.config, 'design_program_enabled', False)
+                            and getattr(unit, '_design_program', None) is not None
+                        )
+                        successor_program = None
+                        decoded_successor_arch = None
+                        program_execution_bounds = None
+
+                        if program_mode:
+                            from machine_sim.agents.design_program import (
+                                DesignExecutionBounds,
+                                DesignProgramInterpreter,
+                                DesignProgramVariationBounds,
+                                vary_design_program,
+                            )
+                            from machine_sim.agents.neural_architecture import (
+                                NeuralArchitectureConfig as _ProgramArchCfg,
+                            )
+                            import random as _prog_rng
+
+                            arch_cfg_for_bounds = _ProgramArchCfg(
+                                minimum_hidden_size=self.config.minimum_hidden_size,
+                                maximum_hidden_size=self.config.maximum_hidden_size,
+                                minimum_recurrent_density=self.config.minimum_recurrent_density,
+                                maximum_recurrent_density=self.config.maximum_recurrent_density,
+                                minimum_plasticity_rate=self.config.minimum_plasticity_rate,
+                                maximum_plasticity_rate=self.config.maximum_plasticity_rate,
+                                initial_plasticity_rate=self.config.neural_plasticity_rate,
+                            )
+                            program_execution_bounds = DesignExecutionBounds.from_architecture_config(
+                                arch_cfg_for_bounds,
+                                execution_budget=self.config.program_execution_budget,
+                                program_base_cost=self.config.program_base_cost,
+                                program_per_instruction_cost=self.config.program_per_instruction_cost,
+                            )
+                            variation_bounds = DesignProgramVariationBounds(
+                                substitution_probability=self.config.program_substitution_probability,
+                                operand_mutation_probability=self.config.program_operand_mutation_probability,
+                                insertion_probability=self.config.program_insertion_probability,
+                                deletion_probability=self.config.program_deletion_probability,
+                                minimum_program_length=self.config.program_min_length,
+                                maximum_program_length=self.config.program_max_length,
+                            )
+                            prog_rng = _prog_rng.Random(
+                                self.tick_count * 11
+                                + stable_seed("design_program_transfer", unit.unit_id)
+                            )
+                            variation_outcome = vary_design_program(
+                                unit._design_program, prog_rng,
+                                program_execution_bounds, variation_bounds,
+                            )
+                            execution_result = DesignProgramInterpreter(
+                                program_execution_bounds
+                            ).execute(
+                                variation_outcome.program,
+                                program_length_bounds=(
+                                    self.config.program_min_length,
+                                    self.config.program_max_length,
+                                ),
+                            )
+                            successor_program = variation_outcome.program
+                            decoded_successor_arch = execution_result.decoded_architecture
+                            source_desc = getattr(unit, '_architecture_descriptor', None)
+                            if decoded_successor_arch is not None and source_desc is not None:
+                                phenotype_changed = (
+                                    decoded_successor_arch.hidden_size != source_desc.hidden_size
+                                    or round(decoded_successor_arch.recurrent_density, 9)
+                                    != round(source_desc.recurrent_density, 9)
+                                    or round(decoded_successor_arch.plasticity_rate, 9)
+                                    != round(source_desc.plasticity_rate, 9)
+                                    or decoded_successor_arch.plasticity_enabled
+                                    != source_desc.plasticity_enabled
+                                )
+                            else:
+                                phenotype_changed = True
+                            self._design_program_transfer_trace.append({
+                                "tick": self.tick_count,
+                                "source_unit_id": unit.unit_id,
+                                "successor_unit_id": result.successor_id,
+                                "source_generation": getattr(unit, '_generation_index', 0),
+                                "source_program_digest": unit._design_program.program_digest(),
+                                "source_program_length": unit._design_program.length,
+                                "successor_program_digest": successor_program.program_digest(),
+                                "successor_program_length": successor_program.length,
+                                "variation_operations": variation_outcome.operations[:32],
+                                "variation_operation_count": len(variation_outcome.operations),
+                                "execution_status": execution_result.status,
+                                "executed_instruction_count": execution_result.executed_instruction_count,
+                                "execution_cost": round(execution_result.execution_cost, 6),
+                                "decoded_hidden_size": (
+                                    decoded_successor_arch.hidden_size
+                                    if decoded_successor_arch is not None else None
+                                ),
+                                "decoded_recurrent_density": (
+                                    round(decoded_successor_arch.recurrent_density, 6)
+                                    if decoded_successor_arch is not None else None
+                                ),
+                                "decoded_plasticity_rate": (
+                                    round(decoded_successor_arch.plasticity_rate, 6)
+                                    if decoded_successor_arch is not None else None
+                                ),
+                                "decoded_plasticity_enabled": (
+                                    decoded_successor_arch.plasticity_enabled
+                                    if decoded_successor_arch is not None else None
+                                ),
+                                "phenotype_changed": phenotype_changed,
+                            })
+                            self._design_program_execution_trace.append({
+                                "tick": self.tick_count,
+                                "unit_id": result.successor_id,
+                                "status": execution_result.status,
+                                "executed_instruction_count": execution_result.executed_instruction_count,
+                                "final_program_counter": execution_result.final_program_counter,
+                                "execution_cost": round(execution_result.execution_cost, 6),
+                                "fault_records": execution_result.fault_records[:16],
+                            })
+                            unit.power_reserve = max(
+                                0.0,
+                                unit.power_reserve - execution_result.execution_cost,
+                            )
+                            self._total_program_execution_cost += execution_result.execution_cost
+                            if decoded_successor_arch is None:
+                                self._record_event(Event(
+                                    tick=self.tick_count,
+                                    event_type=EventType.FABRICATION_FAILED,
+                                    unit_id=unit.unit_id,
+                                    data={
+                                        "cause": "successor_program_invalid",
+                                        "execution_status": execution_result.status,
+                                        "program_digest": successor_program.program_digest(),
+                                    },
+                                ))
+                                continue
+
                         # Create successor unit from the exact template generated
                         from machine_sim.agents.unit import MachineUnitImpl
                         tmpl = result.template
@@ -299,6 +446,15 @@ class SimEngine:
                             neural_hidden_size=self.config.neural_hidden_size,
                             neural_plasticity_rate=self.config.neural_plasticity_rate,
                             neural_seed=self.config.seed,
+                            neural_architecture_descriptor=(
+                                decoded_successor_arch if program_mode else None
+                            ),
+                            design_program=successor_program,
+                            design_execution_bounds=program_execution_bounds,
+                            design_program_length_bounds=(
+                                (self.config.program_min_length, self.config.program_max_length)
+                                if program_mode else None
+                            ),
                         )
                         successor.max_power = tmpl.max_power
                         successor.power_reserve = tmpl.max_power
@@ -367,8 +523,14 @@ class SimEngine:
                             import random as _nc_rng
                             nc_rng = _nc_rng.Random(self.tick_count * 7 + stable_seed("nc_transfer", unit.unit_id))
 
-                            # M19: Architecture variation
-                            arch_variation_enabled = self.config.neural_architecture_variation_enabled
+                            # M19: Architecture variation. In M22 program mode
+                            # the successor architecture comes from its decoded
+                            # program, so descriptor variation is not applied
+                            # to the same successor (no double mutation).
+                            arch_variation_enabled = (
+                                self.config.neural_architecture_variation_enabled
+                                and not program_mode
+                            )
                             source_arch = getattr(unit, '_architecture_descriptor', None)
                             successor_arch = None
                             transition_record = None
@@ -460,6 +622,46 @@ class SimEngine:
                                     variation_applied=True,
                                 )
                                 self._architecture_transfer_trace.append(transition_record.to_dict())
+                            elif program_mode:
+                                # M22: dimension-aware state transfer from the
+                                # decoded successor architecture (M19 transfer
+                                # semantics preserved, descriptor variation
+                                # bypassed).
+                                from machine_sim.agents.neural_architecture import (
+                                    NeuralArchitectureConfig as _ResizeArchCfg,
+                                    compute_fabrication_cost,
+                                    resize_state_for_successor,
+                                )
+                                src_state = unit._neural_controller.state
+                                new_h, new_W_in, new_W_rec, new_W_out, new_W_param, new_b_h, new_mask, retained = \
+                                    resize_state_for_successor(
+                                        src_state.hidden_state, src_state.W_in, src_state.W_rec,
+                                        src_state.W_out, src_state.W_param, src_state.b_hidden,
+                                        src_state.recurrent_mask, decoded_successor_arch, source_arch, nc_rng,
+                                        weight_bound=2.0)
+
+                                from machine_sim.agents.neural_controller import NeuralProcessingState
+                                successor_state = NeuralProcessingState(
+                                    hidden_state=new_h, W_in=new_W_in, W_rec=new_W_rec,
+                                    W_out=new_W_out, W_param=new_W_param, b_hidden=new_b_h,
+                                    c_action=list(src_state.c_action),
+                                    c_param=list(src_state.c_param),
+                                    recurrent_mask=new_mask,
+                                )
+                                successor._neural_controller.set_state(successor_state)
+                                successor._architecture_descriptor = decoded_successor_arch
+
+                                resize_cfg = _ResizeArchCfg(
+                                    neural_fabrication_hidden_unit_cost=self.config.neural_fabrication_hidden_unit_cost,
+                                    neural_fabrication_connection_cost=self.config.neural_fabrication_connection_cost,
+                                )
+                                program_fab_cost = compute_fabrication_cost(
+                                    decoded_successor_arch, resize_cfg
+                                )
+                                unit.power_reserve = max(
+                                    0.0, unit.power_reserve - program_fab_cost
+                                )
+                                self._total_fabrication_cost += program_fab_cost
                             else:
                                 # Legacy transfer (no architecture variation)
                                 source_nc_state = unit._neural_controller.state.copy()
@@ -982,6 +1184,34 @@ class SimEngine:
                     "plasticity_rate_histogram": r_hist,
                     "mean_hidden_size": round(sum(hidden_sizes) / len(hidden_sizes), 2),
                     "mean_recurrent_density": round(sum(densities) / len(densities), 4),
+                })
+
+        # M22: Record design-program distribution snapshots (output-only)
+        if (getattr(self.config, 'design_program_enabled', False)
+                and self.tick_count % self._design_program_dist_snapshot_interval == 0):
+            from collections import Counter
+            program_units = [u for u in self.units
+                             if getattr(u, '_design_program', None) is not None]
+            if program_units:
+                lengths = [u._design_program.length for u in program_units]
+                opcode_counts: Dict[str, int] = {}
+                for unit_with_program in program_units:
+                    for record in unit_with_program._design_program.instructions:
+                        name = OPCODE_NAMES.get(record.opcode, f"op_{record.opcode}")
+                        opcode_counts[name] = opcode_counts.get(name, 0) + 1
+                decoded = [
+                    u._architecture_descriptor.hidden_size
+                    for u in program_units if u._architecture_descriptor is not None
+                ]
+                self._design_program_distribution_trace.append({
+                    "tick": self.tick_count,
+                    "program_unit_count": len(program_units),
+                    "distinct_program_count": len(set(
+                        u._design_program.program_digest() for u in program_units)),
+                    "program_length_histogram": dict(Counter(lengths)),
+                    "mean_program_length": round(sum(lengths) / len(lengths), 3),
+                    "opcode_frequency": dict(sorted(opcode_counts.items())),
+                    "decoded_hidden_size_histogram": dict(Counter(decoded)),
                 })
 
     def get_neural_processing_summary(self) -> Dict[str, Any]:
