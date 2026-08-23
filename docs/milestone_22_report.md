@@ -7,6 +7,7 @@
 - Accepted starting commit (accepted M21 head): `a171caacf1b3bfec66409636e27fcc290ae1a4cd`
 - Prompt-delivery head: `180e7089e10132d7f680d49576c67a230b1e0bc5`
 - Implementation commit: `0e4602ec417807f7cf5e0ddd6a834b313d9b3ae0`
+- M22A correction commit: `8191b187f99a7b7e0aed9db4f2ca768be840bd84`
 
 ## Design rationale
 
@@ -118,9 +119,9 @@ Performance: variable run 80–189 ticks/s depending on phase (new semantics int
 
 ## Tests and coverage
 
-- Full suite: **609 passed**, 0 failed.
-- Coverage: **79.12%** (threshold 77%).
-- New modules/tests: `test_design_program.py` (26), `test_design_program_compatibility.py` (6), `test_milestone_22_judge.py` (8 incl. seven negative judge cases), `test_m21_tooling.py` retained.
+- Full suite: **614 passed**, 0 failed.
+- Coverage: **79.78%** (threshold 77%).
+- New modules/tests: `test_design_program.py` (26), `test_design_program_compatibility.py` (6), `test_milestone_22_judge.py` (8 incl. seven negative judge cases), `test_m22a_finalization.py` (6), `test_m21_tooling.py` retained.
 - Guardrails: all checks pass.
 
 ## Regression judges (subprocess-captured on the M22 implementation)
@@ -131,7 +132,51 @@ M14 PASS, M15 PASS, M16 PASS, M17 PASS, M18 PASS, M19 PASS, M20 PASS, M21 PASS �
 
 `python -m machine_sim.verification.milestone_22_judge output/demo_m22`
 
-**M22_JUDGE_STATUS: PASS** — 25 checks, every check exactly PASS: schema, digest determinism (subprocess probe), bounded interpreter, instruction-set completeness, canonical descriptor compatibility (live), canonical behavior compatibility (artifact), per-unit ownership (live), successor transfer, variation determinism/mechanisms/bounds (live), causality (live opcode+operand+independence probes), dimension-changing transfer regression (live resize probe), execution cost monotonicity (live), malformed handling (live), deep-digest sensitivity (live), checkpoint roundtrip (live), pause/resume equivalence, read-only analysis (live), M21 oracle regression, M14–M21 regression chain, tests and coverage, wording screen, no-self-replication structural probe, and variable-run demonstration completeness.
+**M22_JUDGE_STATUS: PASS** — 31 checks, every check exactly PASS: schema, digest determinism (subprocess probe), bounded interpreter, instruction-set completeness, canonical descriptor compatibility (live), canonical behavior compatibility (artifact), per-unit ownership (live), successor transfer, variation determinism/mechanisms/bounds (live), causality (live opcode+operand+independence probes), dimension-changing transfer regression (live resize probe), execution cost monotonicity (live), malformed handling (live), deep-digest sensitivity (live), checkpoint roundtrip (live), pause/resume equivalence, read-only analysis (live), M21 oracle regression, M14–M21 regression chain, tests and coverage, wording screen, no-self-replication structural probe, variable-run demonstration completeness, plus the six M22A transactional-finalization probes (failure accounting, failure-event exactness, phantom-lineage prevention, exact program-cost accounting, exactly-once success finalization, failed-then-valid sequence).
+
+## M22A correction — transactional fabrication finalization and lineage consistency
+
+Independent review held M22 acceptance on one accounting/causality inconsistency: `FabricationEngine.fabricate()` finalized success-only state (success counter, lineage record, source successful-fabrication tick) before program interpretation could reject assembly, so a failed successor program left a success count and lineage edge with no unit behind them.
+
+Correction (commit `8191b187f99a7b7e0aed9db4f2ca768be840bd84`): a deterministic two-phase boundary inside `FabricationEngine`.
+
+```text
+prepare_fabricate()   attempt phase + consumption/reservation phase
+  - _fabrication_attempts += 1
+  - prerequisite gates and cooldown policy unchanged
+  - base power (30.0) and material consumed exactly once
+  - placement reserved; successor ID reserved (documented option A:
+    failed assembly leaves gaps; reserved IDs never appear in lineage)
+  - NO success increment, NO lineage record, NO successful-fabrication tick
+
+<engine program transfer + interpretation>
+
+commit_fabrication(pending)   successful-construction commit, called only
+  when an assembled successor is about to be registered
+  - _fabrication_successes += 1 (exactly once)
+  - exactly one LineageRecord appended
+  - source _last_fabrication_tick advanced
+```
+
+`fabricate()` remains as an exact legacy wrapper (prepare + immediate commit) so every pre-M22A configuration keeps byte-identical outcomes; legacy equivalence is covered by the untouched M6–M21 fabrication/engine suites and judges.
+
+Invalid-program accounting (live fixtures and live judge probes):
+
+```text
+attempts +1; successes +0; failures[successor_program_invalid] +1;
+lineage +0; units +0; occupied cells +0;
+_last_fabrication_tick unchanged; _last_fabrication_attempt_tick == attempt tick;
+exactly one FABRICATION_FAILED(cause=successor_program_invalid) event;
+zero FABRICATION_SUCCEEDED events;
+power delta exactly -(base power + program execution cost);
+material reduced exactly once by the base material cost.
+```
+
+Valid-program accounting: attempts/successes/lineage/units/occupancy each +1 exactly once, one success event, no program-invalid failure event, and the single lineage edge names the assembled successor's real identifier. The failed-then-valid sequence leaves no phantom generation or lineage edge: failed provisional IDs never appear in lineage records, and all recorded edges reference the one real successor at generation 1.
+
+Transfer-trace rows mark candidate IDs explicitly (`successor_id_provisional: true`), so failed attempts are summarized separately without inflating successful transfer counts, lineage depth, or success rates. The read-only lineage analyzer already filtered on completed executions; its summaries now also expose failure counts distinctly through the fabrication subsystem summary.
+
+Judge hardening: six new live checks (`m22a_program_failure_accounting_check`, `m22a_failure_event_exactness_check`, `m22a_phantom_lineage_prevention_check`, `m22a_program_cost_accounting_exact_check`, `m22a_success_finalization_once_check`, `m22a_failed_then_valid_sequence_check`) run deterministic invalid/valid scenarios on every judge invocation — 31 checks total, still exact-PASS-only.
 
 ## Known limitations
 

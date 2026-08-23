@@ -60,6 +60,7 @@
 - `a171caacf1b3bfec66409636e27fcc290ae1a4cd` — M21 accepted starting state (M22 baseline)
 - `180e7089e10132d7f680d49576c67a230b1e0bc5` — M22 prompt delivery
 - `0e4602ec417807f7cf5e0ddd6a834b313d9b3ae0` — M22 implementation: executable design-program substrate, deterministic bounded interpreter, program transfer/variation, checkpoint/digest integration, independent judge
+- `8191b187f99a7b7e0aed9db4f2ca768be840bd84` — M22A correction: transactional fabrication finalization, lineage consistency, judge hardening to 31 live-probe checks
 
 ## Branch Name
 `feature/milestone-1`
@@ -101,7 +102,7 @@ M20_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 M21_JUDGE_STATUS: PASS (subprocess-captured on M22 code, exit 0; oracle artifacts regenerated fresh with zero mismatches)
 
 ## M22 Judge Result
-M22_JUDGE_STATUS: PASS (25/25 checks passed, 0 SKIP, strict exact-PASS-only;
+M22_JUDGE_STATUS: PASS (31/31 checks passed, 0 SKIP, strict exact-PASS-only;
 live probes for schema/digest determinism, interpreter bounds, instruction-set
 completeness, descriptor compatibility, ownership, variation determinism and
 mechanisms, bounds, causality, dimension-changing resize, cost monotonicity,
@@ -134,6 +135,7 @@ analysis, no-self-replication structure)
 | M20 | 20000 ticks, process-isolated pause/resume equivalence, judge PASS |
 | M21 | sparse runtime 2.5594x, deep-digest zero mismatches, checkpoint growth 0.99, judge 21/21 PASS |
 | M22 | design-program substrate: canonical compatibility proven, 6 transfers (2 zero-change, 3 phenotype-changed), pause/resume equivalent, judge 25/25 PASS |
+| M22A | transactional finalization: invalid program commits nothing (attempts+1, failures+1, successes/lineage/units/occupancy unchanged), costs exact once, judge hardened to 31/31 PASS |
 | M21 | deep-digest zero mismatches across all series, primary speedup 2.5594x, checkpoint growth ratio 0.99 vs 4.36 documented, population tiers 10/100/1000 executed, 21/21 judge PASS |
 
 ## M21 Demo Output
@@ -189,8 +191,9 @@ Process-isolated pause/resume: pause at tick 650, resumed span 250,
 Decode throughput: canonical 63,397 programs/s; varied mean 60,754 programs/s
 Cost model: 0.5 base + 0.01 per executed instruction, charged at construction
 
-Tests: 609 passed. Coverage: 79.12%. Guardrails: pass.
-Judges: M14-M21 all PASS on M22 code. M22 judge: 25/25 PASS.
+Tests: 614 passed. Coverage: 79.78%. Guardrails: pass.
+Judges: M14-M21 all PASS on M22 code. M22 judge: 31/31 PASS (incl. six M22A live transactional-finalization probes).
+Invalid-program accounting verified live: attempts+1, successes+0, lineage+0, units+0, occupancy+0, marker unchanged, one FAILED event, costs consumed exactly once.
 Self-replication: NOT implemented (structural probe enforced).
 ```
 
