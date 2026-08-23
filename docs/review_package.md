@@ -1,4 +1,4 @@
-# Milestone 20 Final Review Package
+# Milestone 21 Final Review Package
 
 ## Commit History
 
@@ -53,6 +53,10 @@
 - `d9bd3bf` — Milestone 19 demo artifact and determinism fixes
 - `275befc` — Milestone 20 user-owned unattended run control
 - `254bfec` — Milestone 20A stage-closing documentation sync
+- `ab20cdc` — Milestone 20 accepted starting state (M21 baseline)
+- `b679d23` — M21 prompt delivery / reference-freeze point
+- `23decf5559530e9edf88ffb98124e58b10f09051` — M21 oracle/preflight: deep semantic-state digest, frozen reference trajectories, benchmark harness
+- `6377a3aa19d5017d3052b82c5dca92b1b6034619` — M21 optimization implementation: sparse runtime, checkpoint trace separation, independent judge
 
 ## Branch Name
 `feature/milestone-1`
@@ -61,36 +65,42 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-521 passed in 45.43s
+569 passed in 22.33s (0 failed)
 
 ## Coverage (Final)
-77.94%
+78.31%
 
 ## Guardrail Result
 All guardrail checks passed.
 
 ## M14 Judge Result
-M14_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+M14_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M15 Judge Result
-M15_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+M15_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M16 Judge Result
-M16_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP)
+M16_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M17 Judge Result
-M17_JUDGE_STATUS: PASS (12/12 checks passed, 0 SKIP, strict exact-PASS-only)
+M17_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M18 Judge Result
-M18_JUDGE_STATUS: PASS (14/14 checks passed, 0 SKIP, strict exact-PASS-only)
+M18_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M19 Judge Result
-M19_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only)
+M19_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M20 Judge Result
-M20_JUDGE_STATUS: PASS (24/24 checks passed, 0 SKIP, strict exact-PASS-only)
+M20_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
-## Full M1-M20 Regression Summary
+## M21 Judge Result
+M21_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only;
+live probes for digest determinism, sensitivity, output-only independence,
+sparse-world equivalence, checkpoint separation; regression evidence taken
+only from judge-result artifacts)
+
+## Full M1-M21 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -107,70 +117,74 @@ M20_JUDGE_STATUS: PASS (24/24 checks passed, 0 SKIP, strict exact-PASS-only)
 | M11 | raw=100, compressed=20, ratio=0.200 |
 | M12 | generations=100, capsule_compat=0.985 |
 | M13 | consistency=0.961, combined_stability=0.925 |
-| M14A | 20000 ticks, 120x120, 12/12 judge PASS |
-| M15 | 30000 ticks, 120x120, 6 transfers, gen span 4, 12/12 judge PASS |
-| M16 | 6 source records, 3 compressed segments, ratio 0.695, replay stable, 12/12 judge PASS |
-| M17 | 20000 ticks, 120x120, 7 active, 5 transfers, 29036 plasticity events, 12/12 judge PASS |
-| M18 | 6 variants, nontrivial sensitivity detected, 14/14 judge PASS |
-| M19 | architecture variation, dimension-changing transfer, 21/21 judge PASS |
-| M20 | 20000 ticks, pause at 8100, resumed span 11900, digests equal, 24/24 judge PASS |
+| M14 | 20000 ticks, 120x120, judge PASS |
+| M15 | 30000 ticks, multi-generation transfers, judge PASS |
+| M16 | trajectory compression + offline analysis, judge PASS |
+| M17 | neural processing unit, judge PASS |
+| M18 | variant sensitivity sweep, judge PASS |
+| M19 | architecture variation with dimension-changing transfer, judge PASS |
+| M20 | 20000 ticks, process-isolated pause/resume equivalence, judge PASS |
+| M21 | deep-digest zero mismatches across all series, primary speedup 2.5594x, checkpoint growth ratio 0.99 vs 4.36 documented, population tiers 10/100/1000 executed, 21/21 judge PASS |
 
-## M19 Demo Output
+## M21 Demo Output
 
-```
-40000 ticks, 120x120 grid, 8 initial units, seed=42
-Architecture variation enabled, dimension-changing successor transfer
-Increase and decrease transitions both observed
-Fixed-versus-variable comparison: nontrivial architecture variation detected
-Judge: 21/21 PASS, 0 SKIP (strict exact-PASS-only)
-```
+```text
+Reference freeze (pre-optimization code at b679d23):
+  Series A: 2500 ticks, seed 421, 25 samples
+  Series B: 5200 ticks, full M19/M20 path, 52 samples
+  Series C: 3000 ticks, pause applied at tick 1550 via control channel,
+            resume in a separate OS process, 30 samples
+  Freeze continuity: deep digest and shallow chain equal across the pause
 
-## M20 Demo Output
+Equivalence rerun (final optimized code):
+  a: 25 samples, b: 52 samples, c-uninterrupted: 30 samples,
+  c-pause-resume: 30 samples - mismatch count 0, final digests equal
 
-```
-20000 ticks, 120x120 grid, 8 initial units, seed=42
-Uninterrupted reference run: completed at tick 20000
-Controlled run: user pause request applied at tick 8100, checkpoint written
-Resume: separate process, restored from checkpoint, completed at tick 20000
-Stop: separate short run, stop request applied, run state stopped at tick 100
-Checkpoints: 11 written, 6 retained, 5 pruned, max 28790329 bytes
-Checkpoint validation: 6 pass, 0 fail
-Continuation equivalence: reference and resumed run digests identical
-  c836def339a2c1aebf9d4ba741d175828e2799b8345a032cbf68ab801986b4b5
-Sampled tick digests compared: 40 (24 after the resume point), 0 mismatches
-Status surface read-only: yes. Status page self-contained: yes.
-Judge: 24/24 PASS, 0 SKIP (strict exact-PASS-only)
-Coverage: 77.94%, 521 tests
+Throughput (600 ticks, 120x120, density 0.3, seed 42, 3 repetitions each):
+  baseline median 52.8182 ticks/s -> optimized median 135.1812 ticks/s
+  primary end-to-end speedup 2.5594x (required >= 2.5x)
+  world cells visited per run 8,640,000 -> 2,590,000
+  isolated world-update microbenchmark: dense regime 1.55x,
+  sparse-field regime 11.64x, states equal in both
+
+Checkpoint growth probe (3000 ticks, interval 500):
+  bytes flat-to-declining 5956725 -> 5908610, growth ratio 0.9919
+  versus M20-documented ratio 4.36 driven by accumulated traces
+  pause/stop writes append-only trace sidecars; resume rehydrates them
+
+Population scaling (25 ticks): 10/100/1000 initial units executed,
+  decisions per second 1851 / 2304 / 1666
+
+Tests: 569 passed. Coverage: 78.31%. Guardrails: pass.
+Judges: M14-M20 all PASS on optimized code. M21 judge: 21/21 PASS.
 ```
 
 ## Artifact Paths
 
-- `output/demo_m20/run_manifest.json`
-- `output/demo_m20/run_progress_trace.jsonl`
-- `output/demo_m20/checkpoints/checkpoint_index.json`
-- `output/demo_m20/control/control_history.jsonl`
-- `output/demo_m20/checkpoint_validation_report.json`
-- `output/demo_m20/resume_equivalence_report.json`
-- `output/demo_m20/unattended_run_summary.json`
-- `output/demo_m20/run_status_snapshot.json`
-- `output/demo_m20/run_dashboard.html`
-- `output/demo_m20/artifact_index.json`
-- `output/demo_m20/milestone_20_judge_result.json`
-- `output/demo_m20/reference_run/run_manifest.json`
-- `output/demo_m20/stop_run/run_manifest.json`
-- `output/demo_m19/neural_architecture_run_summary.json`
-- `output/demo_m19/neural_architecture_transfer_trace.jsonl`
-- `output/demo_m19/neural_architecture_lineage_summary.json`
-- `output/demo_m19/fixed_vs_variable_architecture_compare.json`
-- `output/demo_m18/neural_variant_sweep_summary.json`
-- `output/demo_m18/neural_controller_sensitivity_summary.json`
-- `output/demo_m18/milestone_18_judge_result.json`
-- `output/demo_m17/neural_processing_summary.json`
-- `output/demo_m17/neural_vs_scalar_compare.json`
-- `output/demo_m17/milestone_17_judge_result.json`
+- `output/demo_m21/reference/reference_run_summary.json`
+- `output/demo_m21/reference/reference_config_manifest.json`
+- `output/demo_m21/reference/deep_state_digest_trace.jsonl`
+- `output/demo_m21/determinism/deep_state_digest_schema.json`
+- `output/demo_m21/determinism/deep_equivalence_report.json`
+- `output/demo_m21/determinism/pause_resume_deep_equivalence_report.json`
+- `output/demo_m21/performance/hotspot_profile_before.json`
+- `output/demo_m21/performance/hotspot_profile_after.json`
+- `output/demo_m21/performance/profile_before.txt`
+- `output/demo_m21/performance/profile_after.txt`
+- `output/demo_m21/performance/performance_baseline.json`
+- `output/demo_m21/performance/performance_optimized.json`
+- `output/demo_m21/performance/performance_comparison.json`
+- `output/demo_m21/performance/population_scaling.jsonl`
+- `output/demo_m21/performance/world_update_microbenchmark.json`
+- `output/demo_m21/performance/checkpoint_growth_comparison.json`
+- `output/demo_m21/performance/dependency_decision.json`
+- `output/demo_m21/regression/m14_m20_subprocess_results.json`
+- `output/demo_m21/verification/test_run_summary.json`
+- `output/demo_m21/milestone_21_judge_result.json`
 
 ## Report Paths
 
+- `docs/milestone_21_report.md`
 - `docs/milestone_20_report.md`
 - `docs/milestone_19_report.md`
 - `docs/milestone_18_report.md`
@@ -178,13 +192,6 @@ Coverage: 77.94%, 521 tests
 - `docs/milestone_16_report.md`
 - `docs/milestone_15_report.md`
 - `docs/milestone_14_report.md`
-- `docs/milestone_13_report.md`
-- `docs/milestone_12_report.md`
-- `docs/milestone_11_report.md`
-- `docs/milestone_10_report.md`
-- `docs/milestone_9_report.md`
-- `docs/milestone_8_report.md`
-- `docs/milestone_7_report.md`
 
 ## Clean Working Tree
 Clean after final commit and push.
