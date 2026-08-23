@@ -147,15 +147,19 @@ class MachineUnitImpl(MachineUnit):
             has_hazard_nearby = False
             resource_strength = 0.0
             hazard_strength = 0.0
-            for r in readings:
-                if hasattr(r, 'resource_type') and r.resource_quantity > 0:
-                    has_resource_nearby = True
-                    resource_strength = max(resource_strength, r.resource_quantity)
-                if hasattr(r, 'hazard_level') and r.hazard_level > 0:
-                    has_hazard_nearby = True
-                    hazard_strength = max(hazard_strength, r.hazard_level)
+            # Readings share one runtime type; the scalar echo attributes the
+            # reference probes never exist on them, so a single probe decides
+            # the loop for every element exactly as the per-element form did.
+            if readings and hasattr(readings[0], 'resource_type'):
+                for r in readings:
+                    if r.resource_quantity > 0:
+                        has_resource_nearby = True
+                        resource_strength = max(resource_strength, r.resource_quantity)
+                    if r.hazard_level > 0:
+                        has_hazard_nearby = True
+                        hazard_strength = max(hazard_strength, r.hazard_level)
 
-            field_sum = self._field_tracker.get_summary(tick)
+            field_sum = field_summary  # same tick, tracker unchanged since line 123
             signal_observed = field_sum.recent_signal_count > 0
             signal_emitted = field_sum.total_emissions > 0
             movement_blocked = field_sum.recent_movement_blocks > 0

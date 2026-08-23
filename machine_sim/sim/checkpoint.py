@@ -38,14 +38,159 @@ CHECKPOINT_INDEX_NAME = "checkpoint_index.json"
 
 # Attributes deliberately left out of the captured payload. The append-only
 # event store is an output artifact rather than live tick-loop state: the tick
-# loop only reads the per-tick buffer, which is captured.
+# loop only reads the per-tick buffer, which is captured. The remaining
+# exclusions (M21) are output-only accumulated trace history: none of them is
+# read by the tick loop, so separating them keeps checkpoint size driven by
+# future-causal state alone. Each excluded attribute has a rebuilt default so
+# a restored engine remains fully functional, and :func:`write_trace_sidecar`
+# persists the excluded history independently so no observation data is lost.
 FIELD_EXCLUSIONS: Dict[str, Set[str]] = {
     "machine_sim.sim.events:EventLog": {"_events"},
+    "machine_sim.sim.engine:SimEngine": {
+        "_adaptive_state_snapshots",
+        "_neural_state_trace",
+        "_neural_action_trace",
+        "_neural_plasticity_trace",
+        "_neural_successor_transfer_trace",
+        "_architecture_transfer_trace",
+        "_architecture_distribution_trace",
+        "_architecture_cost_trace",
+        "_architecture_initial_descriptors",
+        "_descendant_transfer_trace",
+        "_local_feedback_trace",
+        "_total_processing_cost",
+        "_total_fabrication_cost",
+        "bench_unit_decisions",
+    },
+    "machine_sim.analysis.correlation:SignalCorrelator": {
+        "_signal_history",
+        "_observation_history",
+        "_associations",
+        "_pattern_stats",
+    },
+    "machine_sim.analysis.telemetry:TelemetryTracker": {
+        "_frames",
+        "_unit_buffers",
+    },
+    "machine_sim.analysis.telemetry:ReconciliationEngine": {"_records"},
+    "machine_sim.analysis.telemetry:LineageDriftAnalyzer": {"_entries"},
+    "machine_sim.analysis.trace_compression:TraceCompressor": {
+        "_raw_traces",
+        "_compressed_segments",
+        "_telemetry_frames",
+        "_capsule_records",
+        "_lineage_records",
+    },
+    "machine_sim.analysis.trace_drift:TraceDriftAnalyzer": {
+        "_generation_records",
+        "_envelope_records",
+        "_replay_records",
+        "_capsule_trace_records",
+        "_retention_records",
+    },
+    "machine_sim.analysis.summary_consistency:SummaryConsistencyAnalyzer": {
+        "_unit_summaries",
+        "_retention_records",
+        "_compression_ratios",
+        "_generation_deltas",
+    },
+    "machine_sim.analysis.pressure:PressureAnalyzer": {
+        "_resource_samples",
+        "_extraction_records",
+        "_pressure_history",
+        "_tick_count",
+    },
+    "machine_sim.analysis.field_dynamics:SignalFieldDynamics": {
+        "_signal_history",
+        "_observation_history",
+        "_last_gradient",
+    },
+    "machine_sim.analysis.multi_generation_trace:MultiGenerationTraceAnalyzer": {
+        "_transfer_records",
+    },
+    "machine_sim.environment.fabrication:FabricationEngine": {"_lineage_records"},
+    "machine_sim.environment.calibration:CapsuleManager": {
+        "_capsules",
+        "_capsule_count",
+    },
 }
 
-# Rebuilt values for excluded attributes when a payload is decoded.
+# Zero-argument factories rebuilding excluded attributes on decode.
+_LIST = list
+_DICT = dict
+_FLOAT = float
+
 FIELD_DEFAULTS: Dict[str, Dict[str, Callable[[], Any]]] = {
-    "machine_sim.sim.events:EventLog": {"_events": list},
+    "machine_sim.sim.events:EventLog": {"_events": _LIST},
+    "machine_sim.sim.engine:SimEngine": {
+        "_adaptive_state_snapshots": _LIST,
+        "_neural_state_trace": _LIST,
+        "_neural_action_trace": _LIST,
+        "_neural_plasticity_trace": _LIST,
+        "_neural_successor_transfer_trace": _LIST,
+        "_architecture_transfer_trace": _LIST,
+        "_architecture_distribution_trace": _LIST,
+        "_architecture_cost_trace": _LIST,
+        "_architecture_initial_descriptors": _LIST,
+        "_descendant_transfer_trace": _LIST,
+        "_local_feedback_trace": _LIST,
+        "_total_processing_cost": _FLOAT,
+        "_total_fabrication_cost": _FLOAT,
+        "bench_unit_decisions": int,
+    },
+    "machine_sim.analysis.correlation:SignalCorrelator": {
+        "_signal_history": _LIST,
+        "_observation_history": _LIST,
+        "_associations": _LIST,
+        "_pattern_stats": _DICT,
+    },
+    "machine_sim.analysis.telemetry:TelemetryTracker": {
+        "_frames": _LIST,
+        "_unit_buffers": _DICT,
+    },
+    "machine_sim.analysis.telemetry:ReconciliationEngine": {"_records": _LIST},
+    "machine_sim.analysis.telemetry:LineageDriftAnalyzer": {"_entries": _LIST},
+    "machine_sim.analysis.trace_compression:TraceCompressor": {
+        "_raw_traces": _LIST,
+        "_compressed_segments": _LIST,
+        "_telemetry_frames": _LIST,
+        "_capsule_records": _LIST,
+        "_lineage_records": _LIST,
+    },
+    "machine_sim.analysis.trace_drift:TraceDriftAnalyzer": {
+        "_generation_records": _LIST,
+        "_envelope_records": _LIST,
+        "_replay_records": _LIST,
+        "_capsule_trace_records": _LIST,
+        "_retention_records": _LIST,
+    },
+    "machine_sim.analysis.summary_consistency:SummaryConsistencyAnalyzer": {
+        "_unit_summaries": _LIST,
+        "_retention_records": _LIST,
+        "_compression_ratios": _LIST,
+        "_generation_deltas": _LIST,
+    },
+    "machine_sim.analysis.pressure:PressureAnalyzer": {
+        "_resource_samples": _LIST,
+        "_extraction_records": _LIST,
+        "_pressure_history": _LIST,
+        "_tick_count": int,
+    },
+    "machine_sim.analysis.field_dynamics:SignalFieldDynamics": {
+        "_signal_history": _LIST,
+        "_observation_history": _LIST,
+        "_last_gradient": lambda: None,
+    },
+    "machine_sim.analysis.multi_generation_trace:MultiGenerationTraceAnalyzer": {
+        "_transfer_records": _LIST,
+    },
+    "machine_sim.environment.fabrication:FabricationEngine": {
+        "_lineage_records": _LIST
+    },
+    "machine_sim.environment.calibration:CapsuleManager": {
+        "_capsules": _LIST,
+        "_capsule_count": int,
+    },
 }
 
 
@@ -344,6 +489,135 @@ def restore_engine_state(payload: Dict[str, Any]) -> Any:
     if "engine" not in payload:
         raise CheckpointError("payload has no engine section")
     return decode_state(payload["engine"])
+
+
+# M21 output-only trace separation: sidecar persistence ----------------------
+#
+# Checkpoints carry future-causal state only. The excluded observation history
+# is written independently as a trace sidecar whenever run control pauses or
+# stops a run, and is rehydrated on resume so post-run artifacts still cover
+# the complete run. No observation data is dropped silently.
+
+TRACE_SIDECAR_SCHEMA_VERSION = "1.0.0"
+TRACE_SIDECAR_DIR_NAME = "trace_segments"
+TRACE_SIDECAR_PATTERN = "trace_segment_[0-9]*.json"
+
+_OWNER_RESOLVERS: Dict[str, Callable[[Any], Any]] = {
+    "engine": lambda engine: engine,
+    "correlator": lambda engine: getattr(engine, "correlator", None),
+    "telemetry_tracker": lambda engine: getattr(engine, "telemetry_tracker", None),
+    "reconciliation_engine": lambda engine: getattr(engine, "reconciliation_engine", None),
+    "lineage_drift": lambda engine: getattr(engine, "lineage_drift", None),
+    "trace_compressor": lambda engine: getattr(engine, "trace_compressor", None),
+    "trace_drift": lambda engine: getattr(engine, "trace_drift", None),
+    "summary_consistency": lambda engine: getattr(engine, "summary_consistency", None),
+    "pressure_analyzer": lambda engine: getattr(engine, "pressure_analyzer", None),
+    "field_dynamics": lambda engine: getattr(engine, "field_dynamics", None),
+    "multi_gen_trace": lambda engine: getattr(engine, "multi_gen_trace", None),
+    "fabrication_engine": lambda engine: getattr(engine, "fabrication_engine", None),
+    "capsule_manager": lambda engine: getattr(engine, "capsule_manager", None),
+}
+
+_TYPE_KEY_TO_SECTION: Dict[str, str] = {
+    "machine_sim.sim.engine:SimEngine": "engine",
+    "machine_sim.analysis.correlation:SignalCorrelator": "correlator",
+    "machine_sim.analysis.telemetry:TelemetryTracker": "telemetry_tracker",
+    "machine_sim.analysis.telemetry:ReconciliationEngine": "reconciliation_engine",
+    "machine_sim.analysis.telemetry:LineageDriftAnalyzer": "lineage_drift",
+    "machine_sim.analysis.trace_compression:TraceCompressor": "trace_compressor",
+    "machine_sim.analysis.trace_drift:TraceDriftAnalyzer": "trace_drift",
+    "machine_sim.analysis.summary_consistency:SummaryConsistencyAnalyzer": "summary_consistency",
+    "machine_sim.analysis.pressure:PressureAnalyzer": "pressure_analyzer",
+    "machine_sim.analysis.field_dynamics:SignalFieldDynamics": "field_dynamics",
+    "machine_sim.analysis.multi_generation_trace:MultiGenerationTraceAnalyzer": "multi_gen_trace",
+    "machine_sim.environment.fabrication:FabricationEngine": "fabrication_engine",
+    "machine_sim.environment.calibration:CapsuleManager": "capsule_manager",
+}
+
+
+def collect_output_only_state(engine: Any) -> Dict[str, Any]:
+    """Encode every excluded output-only collection of ``engine``."""
+    sections: Dict[str, Any] = {}
+    for type_key, attrs in FIELD_EXCLUSIONS.items():
+        section_name = _TYPE_KEY_TO_SECTION.get(type_key)
+        if section_name is None:
+            continue
+        owner = _OWNER_RESOLVERS[section_name](engine)
+        if owner is None:
+            continue
+        values: Dict[str, Any] = {}
+        for attr in sorted(attrs):
+            if hasattr(owner, attr):
+                values[attr] = encode_state(getattr(owner, attr))
+        if values:
+            sections[section_name] = values
+    return sections
+
+
+def rehydrate_output_only_state(engine: Any, sections: Dict[str, Any]) -> int:
+    """Restore output-only history captured by :func:`collect_output_only_state`.
+
+    Values replace whatever the freshly decoded engine holds; callers pass the
+    latest sidecar so the replacement represents the full accumulated history.
+    Returns the number of attributes restored.
+    """
+    restored = 0
+    for section_name, values in sections.items():
+        resolver = _OWNER_RESOLVERS.get(section_name)
+        if resolver is None:
+            continue
+        owner = resolver(engine)
+        if owner is None or not isinstance(values, dict):
+            continue
+        for attr, payload in values.items():
+            setattr(owner, attr, decode_state(payload))
+            restored += 1
+    return restored
+
+
+def trace_sidecar_path(output_dir: Path, tick: int) -> Path:
+    return Path(output_dir) / TRACE_SIDECAR_DIR_NAME / f"trace_segment_{tick:09d}.json"
+
+
+def write_trace_sidecar(engine: Any, output_dir: Path, tick: int, run_id: str) -> Path:
+    """Persist the excluded output-only history beside the checkpoint set."""
+    document = {
+        "sidecar_schema_version": TRACE_SIDECAR_SCHEMA_VERSION,
+        "run_id": run_id,
+        "tick": int(tick),
+        "sections": collect_output_only_state(engine),
+    }
+    target = trace_sidecar_path(output_dir, tick)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".json.partial")
+    temporary.write_text(
+        json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+    )
+    os.replace(temporary, target)
+    return target
+
+
+def list_trace_sidecars(output_dir: Path) -> List[Path]:
+    directory = Path(output_dir) / TRACE_SIDECAR_DIR_NAME
+    if not directory.exists():
+        return []
+    import re as _re
+
+    pattern = _re.compile(TRACE_SIDECAR_PATTERN)
+    return sorted(
+        (path for path in directory.iterdir() if pattern.match(path.name)),
+        key=lambda path: path.name,
+    )
+
+
+def load_latest_trace_sidecar(output_dir: Path) -> Optional[Dict[str, Any]]:
+    sidecars = list_trace_sidecars(output_dir)
+    if not sidecars:
+        return None
+    try:
+        return json.loads(sidecars[-1].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def checkpoint_path(output_dir: Path, tick: int) -> Path:

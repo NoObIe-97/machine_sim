@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from bisect import bisect_left, insort
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,7 +19,7 @@ from machine_sim.environment.resources import Resource, ResourceType
 from machine_sim.sim.events import Event, EventType
 
 
-@dataclass
+@dataclass(slots=True)
 class Cell:
     position: Tuple[int, int]
     terrain: str = "plain"
@@ -35,7 +36,7 @@ class Cell:
         return sum(h.intensity for h in self.hazards.values())
 
 
-@dataclass
+@dataclass(slots=True)
 class Signal:
     """A non-semantic physical signal in the world."""
     signal_id: int
@@ -61,11 +62,38 @@ class World:
         self._next_signal_id = 0
         self._current_tick = 0
         self._active_cells: set = set()
+        # M21: deterministic sparse-update index of (position, cell) pairs kept
+        # sorted by position. Sorted tuple order equals the row-major grid
+        # insertion order, so iteration reproduces the reference full-grid
+        # event ordering exactly while skipping inert cells.
+        self._active_entries: List[Tuple[Tuple[int, int], Cell]] = []
         # M21 benchmark counters: observation-only, never read by the tick loop.
         self.update_calls = 0
         self.cells_visited_total = 0
         self.cells_updated_total = 0
         self._init_grid()
+
+    def _mark_cell_active(self, position: Tuple[int, int]) -> None:
+        if position not in self._active_cells:
+            self._active_cells.add(position)
+            index = bisect_left(
+                self._active_entries, position, key=lambda entry: entry[0]
+            )
+            self._active_entries.insert(index, (position, self.grid[position]))
+
+    def _refresh_cell_activity(self, position: Tuple[int, int], cell: Cell) -> None:
+        if cell.resources or cell.hazards:
+            self._mark_cell_active(position)
+        elif position in self._active_cells:
+            self._active_cells.discard(position)
+            index = bisect_left(
+                self._active_entries, position, key=lambda entry: entry[0]
+            )
+            if (
+                index < len(self._active_entries)
+                and self._active_entries[index][0] == position
+            ):
+                self._active_entries.pop(index)
 
     def _init_grid(self) -> None:
         for x in range(self.width):
@@ -81,7 +109,7 @@ class World:
                     quantity=rng.uniform(10, 50),
                     regrowth_rate=rng.uniform(0.01, 0.1),
                 )
-                self._active_cells.add(pos)
+                self._mark_cell_active(pos)
 
     def populate_hazards(self, density: float, rng: random.Random) -> None:
         for pos, cell in self.grid.items():
@@ -92,7 +120,7 @@ class World:
                     intensity=rng.uniform(0.1, 1.0),
                     decay_rate=rng.uniform(0.001, 0.01),
                 )
-                self._active_cells.add(pos)
+                self._mark_cell_active(pos)
 
     def place_unit(self, unit: MachineUnit, rng: random.Random) -> None:
         # If unit already has a valid position, use it
@@ -113,22 +141,52 @@ class World:
         self._current_tick = tick
         self.update_calls += 1
         events: List[Event] = []
-        for pos, cell in self.grid.items():
-            self.cells_visited_total += 1
-            if cell.resources or cell.hazards:
-                self.cells_updated_total += 1
-            for res in cell.resources.values():
-                old_qty = res.quantity
-                res.quantity = min(res.max_quantity,
-                    res.quantity + res.regrowth_rate)
-                if old_qty <= 0 and res.quantity > 0:
-                    events.append(Event(
-                        tick=tick,
-                        event_type=EventType.RESOURCE_DEPLETED,
-                        data={"position": pos, "resource": res.resource_type.value, "regrew": True},
-                    ))
-            for h in cell.hazards.values():
-                h.intensity = max(0.0, h.intensity - h.decay_rate)
+        visited_total = self.cells_visited_total
+        updated_total = self.cells_updated_total
+        inert_seen = False
+        for pos, cell in self._active_entries:
+            resources = cell.resources
+            hazards = cell.hazards
+            if not (resources or hazards):
+                # Defensive self-heal: a cell whose resource/hazard maps were
+                # cleared without _refresh_cell_activity leaves the index.
+                self._active_cells.discard(pos)
+                inert_seen = True
+                continue
+            visited_total += 1
+            updated_total += 1
+            for res in resources.values():
+                quantity = res.quantity
+                # Skipping is provably identical: min(max_quantity, saturated +
+                # regrowth) == saturated, so the reference write cannot change
+                # the value or emit an event.
+                if quantity < res.max_quantity:
+                    grown = quantity + res.regrowth_rate
+                    if grown > res.max_quantity:
+                        grown = res.max_quantity
+                    res.quantity = grown
+                    if quantity <= 0 < grown:
+                        events.append(Event(
+                            tick=tick,
+                            event_type=EventType.RESOURCE_DEPLETED,
+                            data={"position": pos, "resource": res.resource_type.value, "regrew": True},
+                        ))
+            for h in hazards.values():
+                intensity = h.intensity
+                # max(0.0, 0.0 - decay_rate) == 0.0, so skipping exhausted
+                # hazards is identical to the reference write.
+                if intensity != 0.0:
+                    decayed = intensity - h.decay_rate
+                    h.intensity = decayed if decayed > 0.0 else 0.0
+        if inert_seen:
+            grid = self.grid
+            self._active_entries = [
+                entry
+                for entry in self._active_entries
+                if grid[entry[0]].resources or grid[entry[0]].hazards
+            ]
+        self.cells_visited_total = visited_total
+        self.cells_updated_total = updated_total
         # Decay and remove expired signals
         self.signals = [s for s in self.signals if tick - s.emitted_tick < s.duration]
         for sig in self.signals:
@@ -191,21 +249,83 @@ class World:
               exclude_unit_id: Optional[str] = None) -> List[SensorReading]:
         readings: List[SensorReading] = []
         x, y = position
-        for dx in range(-sensor_range, sensor_range + 1):
-            for dy in range(-sensor_range, sensor_range + 1):
-                nx, ny = x + dx, y + dy
-                if (nx, ny) in self.grid:
-                    cell = self.grid[(nx, ny)]
-                    nearby = [uid for uid in ([cell.unit_id] if cell.unit_id else [])
-                              if uid != exclude_unit_id]
-                    readings.append(SensorReading(
-                        tick=0,
-                        position=(nx, ny),
-                        resource_signals={k: r.quantity for k, r in cell.resources.items()},
-                        hazard_signals={k: h.intensity for k, h in cell.hazards.items()},
-                        nearby_units=nearby,
-                        signal_strength=max(0.0, 1.0 - (abs(dx) + abs(dy)) / (sensor_range * 2)),
-                    ))
+        # The dense grid covers the whole rectangle, so bounds arithmetic
+        # selects exactly the coordinates the reference membership test kept.
+        min_x = x - sensor_range
+        if min_x < 0:
+            min_x = 0
+        max_x = x + sensor_range
+        if max_x >= self.width:
+            max_x = self.width - 1
+        min_y = y - sensor_range
+        if min_y < 0:
+            min_y = 0
+        max_y = y + sensor_range
+        if max_y >= self.height:
+            max_y = self.height - 1
+        grid = self.grid
+        for nx in range(min_x, max_x + 1):
+            for ny in range(min_y, max_y + 1):
+                cell = grid[(nx, ny)]
+                nearby = [uid for uid in ([cell.unit_id] if cell.unit_id else [])
+                          if uid != exclude_unit_id]
+                dx = nx - x
+                dy = ny - y
+                readings.append(SensorReading(
+                    tick=0,
+                    position=(nx, ny),
+                    resource_signals={k: r.quantity for k, r in cell.resources.items()},
+                    hazard_signals={k: h.intensity for k, h in cell.hazards.items()},
+                    nearby_units=nearby,
+                    signal_strength=max(0.0, 1.0 - (abs(dx) + abs(dy)) / (sensor_range * 2)),
+                ))
+        return readings
+
+    def sense_tail(self, position: Tuple[int, int], sensor_range: int,
+                   exclude_unit_id: Optional[str] = None,
+                   tail: int = 10) -> List[SensorReading]:
+        """Build only the final ``tail`` readings of the full window scan.
+
+        Appending a longer list to a bounded deque leaves exactly its last
+        ``tail`` elements, so constructing just those yields an identical
+        deque state while skipping construction of evicted readings.
+        """
+        x, y = position
+        min_x = x - sensor_range
+        if min_x < 0:
+            min_x = 0
+        max_x = x + sensor_range
+        if max_x >= self.width:
+            max_x = self.width - 1
+        min_y = y - sensor_range
+        if min_y < 0:
+            min_y = 0
+        max_y = y + sensor_range
+        if max_y >= self.height:
+            max_y = self.height - 1
+        coordinates = [
+            (nx, ny)
+            for nx in range(min_x, max_x + 1)
+            for ny in range(min_y, max_y + 1)
+        ]
+        if len(coordinates) > tail:
+            coordinates = coordinates[-tail:]
+        grid = self.grid
+        readings: List[SensorReading] = []
+        for nx, ny in coordinates:
+            cell = grid[(nx, ny)]
+            nearby = [uid for uid in ([cell.unit_id] if cell.unit_id else [])
+                      if uid != exclude_unit_id]
+            dx = nx - x
+            dy = ny - y
+            readings.append(SensorReading(
+                tick=0,
+                position=(nx, ny),
+                resource_signals={k: r.quantity for k, r in cell.resources.items()},
+                hazard_signals={k: h.intensity for k, h in cell.hazards.items()},
+                nearby_units=nearby,
+                signal_strength=max(0.0, 1.0 - (abs(dx) + abs(dy)) / (sensor_range * 2)),
+            ))
         return readings
 
     def execute_action(self, action: Action, unit: MachineUnit) -> ActionResult:
@@ -428,3 +548,29 @@ class World:
                 if (nx, ny) in self.grid and self.grid[(nx, ny)].unit_id is not None:
                     count += 1
         return count
+
+    def scan_neighbors(
+        self, position: Tuple[int, int], sensor_range: int
+    ) -> Tuple[int, float]:
+        """Single-pass equivalent of count_nearby_units + compute_spatial_pressure.
+
+        Integer counting in the identical iteration order, so both returned
+        values match the two-pass reference exactly.
+        """
+        grid = self.grid
+        x, y = position
+        total_cells = 0
+        occupied_cells = 0
+        for nx in range(max(0, x - sensor_range),
+                        min(self.width - 1, x + sensor_range) + 1):
+            for ny in range(max(0, y - sensor_range),
+                            min(self.height - 1, y + sensor_range) + 1):
+                if nx == x and ny == y:
+                    continue  # Exclude center cell
+                cell = grid[(nx, ny)]
+                total_cells += 1
+                if cell.unit_id is not None:
+                    occupied_cells += 1
+        if total_cells == 0:
+            return 0, 0.0
+        return occupied_cells, occupied_cells / total_cells

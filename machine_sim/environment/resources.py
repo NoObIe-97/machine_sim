@@ -12,7 +12,7 @@ class ResourceType(Enum):
     CONDUCTOR = "conductor"
 
 
-@dataclass
+@dataclass(slots=True)
 class Resource:
     resource_type: ResourceType
     quantity: float

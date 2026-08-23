@@ -52,7 +52,7 @@ ACTION_NAMES = ["MOVE", "SCAN", "HARVEST", "EMIT_SIGNAL", "IDLE", "MAINTAIN", "F
 SENSOR_INPUT_SIZE = 16
 
 
-@dataclass
+@dataclass(slots=True)
 class NeuralProcessingConfig:
     """Configuration for the internal neural processing unit."""
     input_size: int = SENSOR_INPUT_SIZE
@@ -64,7 +64,7 @@ class NeuralProcessingConfig:
     weight_bound: float = 2.0
 
 
-@dataclass
+@dataclass(slots=True)
 class NeuralProcessingState:
     """Bounded internal state of the neural processing unit."""
     hidden_state: List[float] = field(default_factory=lambda: [0.0] * 16)
@@ -190,45 +190,68 @@ class NeuralController:
                            scan_result_count: float,
                            previous_action: str, time_since_signal: float,
                            fabrication_ready: bool = False) -> List[float]:
-        """Build a fixed-size sensor input vector from local runtime values only."""
+        """Build a fixed-size sensor input vector from local runtime values only.
+
+        Bounds are applied with inline conditionals, which match
+        max(lo, min(hi, v)) exactly for finite inputs.
+        """
         action_enc = [0.0] * 4
         action_map = {"MOVE": 0, "SCAN": 1, "HARVEST": 2, "EMIT_SIGNAL": 3}
         if previous_action in action_map:
             action_enc[action_map[previous_action]] = 1.0
 
+        def bound01(value: float) -> float:
+            if value <= 0.0:
+                return 0.0
+            if value > 1.0:
+                return 1.0
+            return value
+
         return [
-            _clamp(power_ratio, 0.0, 1.0),
-            _clamp(avg_component_health, 0.0, 1.0),
+            bound01(power_ratio),
+            bound01(avg_component_health),
             1.0 if has_resource else 0.0,
-            _clamp(resource_strength, 0.0, 1.0),
+            bound01(resource_strength),
             1.0 if has_hazard else 0.0,
-            _clamp(hazard_strength, 0.0, 1.0),
+            bound01(hazard_strength),
             1.0 if signal_observed else 0.0,
             1.0 if signal_emitted else 0.0,
             1.0 if movement_blocked else 0.0,
             1.0 if resource_extracted else 0.0,
-            _clamp(scan_result_count, 0.0, 1.0),
+            bound01(scan_result_count),
             action_enc[0],
             action_enc[1],
             action_enc[2],
             action_enc[3],
-            _clamp(time_since_signal, 0.0, 1.0),
+            bound01(time_since_signal),
         ]
 
     def _matvec(self, W: List[List[float]], x: List[float]) -> List[float]:
-        """Matrix-vector multiply: W @ x."""
-        return [sum(W[i][j] * x[j] for j in range(len(x))) for i in range(len(W))]
+        """Matrix-vector multiply: W @ x.
+
+        Builtin sum() applies compensated float accumulation whose result
+        depends only on the operand sequence, so feeding it from a list
+        comprehension is bit-identical to the reference generator form while
+        avoiding per-element generator resumption.
+        """
+        return [sum([w * v for w, v in zip(row, x)]) for row in W]
 
     def _vecadd(self, a: List[float], b: List[float]) -> List[float]:
-        return [a[i] + b[i] for i in range(len(a))]
+        return [u + v for u, v in zip(a, b)]
 
     def _masked_matvec(self, W: List[List[float]], x: List[float],
                        mask: Optional[List[List[float]]] = None) -> List[float]:
-        """Matrix-vector multiply with optional mask: (W * mask) @ x."""
+        """Matrix-vector multiply with optional mask: (W * mask) @ x.
+
+        Preserves the reference ((W[i][j] * mask[i][j]) * x[j]) evaluation
+        order so results stay bit-identical.
+        """
         if mask is None:
             return self._matvec(W, x)
-        return [sum(W[i][j] * mask[i][j] * x[j] for j in range(len(x)))
-                for i in range(len(W))]
+        return [
+            sum([w * m * v for w, m, v in zip(row, mask_row, x)])
+            for row, mask_row in zip(W, mask)
+        ]
 
     def forward(self, sensor_input: List[float]) -> Tuple[List[float], List[float], List[float], List[float]]:
         """Forward pass through the neural controller.
@@ -244,10 +267,11 @@ class NeuralController:
         self.forward_evaluations += 1
 
         # h_t = tanh(W_in @ x + (W_rec * mask) @ h_prev + b_hidden)
+        tanh = math.tanh
         h_in = self._matvec(s.W_in, sensor_input)
         h_rec = self._masked_matvec(s.W_rec, s.hidden_state, s.recurrent_mask)
         h_combined = self._vecadd(self._vecadd(h_in, h_rec), s.b_hidden)
-        new_hidden = [_tanh(v) for v in h_combined]
+        new_hidden = [tanh(v) for v in h_combined]
 
         # action_logits = W_out @ h + c_action
         action_logits = self._vecadd(self._matvec(s.W_out, new_hidden), s.c_action)
@@ -338,16 +362,32 @@ class NeuralController:
         # Eligibility: outer(h, a_onehot)
         # W_out has shape [output_size][hidden_size]
         # W_out[j][i] += plasticity_rate * delta * h[i] * a_onehot[j]
+        # (rate*delta) is precomputed; the reference parses
+        # plasticity_rate * delta * eligibility as ((rate*delta)*eligibility),
+        # so this is bit-identical.
+        rate_delta = cfg.plasticity_rate * delta
+        lower = -cfg.weight_bound
+        upper = cfg.weight_bound
         for j in range(cfg.output_size):
-            for i in range(cfg.hidden_size):
-                eligibility = new_hidden[i] * a_onehot[j]
-                s.W_out[j][i] += cfg.plasticity_rate * delta * eligibility
-                s.W_out[j][i] = _clamp(s.W_out[j][i], -cfg.weight_bound, cfg.weight_bound)
+            out_row = s.W_out[j]
+            a_j = a_onehot[j]
+            for i, h_i in enumerate(new_hidden):
+                updated = out_row[i] + rate_delta * (h_i * a_j)
+                if updated > upper:
+                    updated = upper
+                elif updated < lower:
+                    updated = lower
+                out_row[i] = updated
 
         # Also adapt hidden bias slightly
-        for i in range(cfg.hidden_size):
-            s.b_hidden[i] += cfg.plasticity_rate * delta * new_hidden[i] * 0.1
-            s.b_hidden[i] = _clamp(s.b_hidden[i], -cfg.weight_bound, cfg.weight_bound)
+        # Reference term: ((plasticity_rate * delta) * new_hidden[i]) * 0.1
+        for i, h_i in enumerate(new_hidden):
+            updated = s.b_hidden[i] + rate_delta * h_i * 0.1
+            if updated > upper:
+                updated = upper
+            elif updated < lower:
+                updated = lower
+            s.b_hidden[i] = updated
 
     def transfer_to_successor(self, rng: random.Random,
                               variation: float = 0.05) -> NeuralProcessingState:

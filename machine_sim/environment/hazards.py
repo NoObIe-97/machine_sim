@@ -13,7 +13,7 @@ class HazardType(Enum):
     DEBRIS = "debris"
 
 
-@dataclass
+@dataclass(slots=True)
 class Hazard:
     hazard_type: HazardType
     intensity: float

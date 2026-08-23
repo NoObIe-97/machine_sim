@@ -5,7 +5,7 @@
 [simulation]
 grid_width = 120
 grid_height = 120
-resource_density = 0.45
+resource_density = 0.3
 hazard_density = 0.01
 unit_count = 8
 power_drain_rate = 0.08

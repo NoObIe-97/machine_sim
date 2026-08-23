@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 
-@dataclass
+@dataclass(slots=True)
 class AdaptiveStateVector:
     """Bounded adaptive state that modulates action selection from local feedback."""
     move_weight: float = 0.25

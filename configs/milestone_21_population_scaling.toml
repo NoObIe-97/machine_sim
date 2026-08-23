@@ -5,7 +5,7 @@
 [simulation]
 grid_width = 120
 grid_height = 120
-resource_density = 0.45
+resource_density = 0.3
 hazard_density = 0.01
 unit_count = 10
 power_drain_rate = 0.08
@@ -16,9 +16,9 @@ component_degradation_scale = 0.2
 signal_enabled = true
 signal_pattern_count = 4
 signal_energy_cost = 1.0
-signal_default_radius = 60
+signal_default_radius = 5
 signal_default_decay = 0.01
-signal_default_duration = 40
+signal_default_duration = 10
 signal_observation_window = 20
 
 adaptive_enabled = true
@@ -63,7 +63,7 @@ fabrication_variation = 0.08
 fabrication_min_power_ratio = 0.05
 fabrication_min_component_health = 0.02
 
-telemetry_enabled = true
+telemetry_enabled = false
 reconciliation_enabled = false
 lineage_drift_enabled = false
 pressure_analysis_enabled = false

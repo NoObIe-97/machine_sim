@@ -113,8 +113,16 @@ class SimEngine:
             self.tick()
         return self.snapshot()
 
+    # Validated event labels cache: identical strings to
+    # event_type.name.lower(), validated against the allowlist once per type.
+    _validated_event_labels: Dict[EventType, str] = {}
+
     def _record_event(self, event: Event) -> None:
-        validate_event_label(event.event_type.name.lower())
+        label = self._validated_event_labels.get(event.event_type)
+        if label is None:
+            label = event.event_type.name.lower()
+            validate_event_label(label)
+            self._validated_event_labels[event.event_type] = label
         self.event_log.record(event)
 
     def tick(self) -> None:
@@ -131,8 +139,14 @@ class SimEngine:
         # Phase 2: Unit sensing
         for unit in self.units:
             if unit.is_active:
-                readings = self.world.sense(unit.position, unit.sensor_range,
-                                           exclude_unit_id=unit.unit_id)
+                readings = self.world.sense_tail(
+                    unit.position,
+                    unit.sensor_range,
+                    exclude_unit_id=unit.unit_id,
+                    tail=unit.sensor_readings.maxlen
+                    if unit.sensor_readings.maxlen is not None
+                    else 10,
+                )
                 unit.receive_observations(readings, self.tick_count)
 
         # Phase 3: Unit decision + action
@@ -187,8 +201,9 @@ class SimEngine:
         # Phase 3b: Proximity detection and spatial pressure
         for unit in self.units:
             if unit.is_active:
-                nearby_count = self.world.count_nearby_units(unit.position, unit.sensor_range)
-                spatial_pressure = self.world.compute_spatial_pressure(unit.position, unit.sensor_range)
+                nearby_count, spatial_pressure = self.world.scan_neighbors(
+                    unit.position, unit.sensor_range
+                )
                 if nearby_count > 0:
                     self._record_event(Event(
                         tick=self.tick_count,
@@ -253,7 +268,7 @@ class SimEngine:
         # Phase 6: Validate state
         for unit in self.units:
             if unit.is_active:
-                validate_agent_state(unit.state_copy())
+                validate_agent_state(unit.validation_view())
 
         # Phase 7: Fabrication (if enabled)
         if self.config.fabrication_enabled:
@@ -711,6 +726,15 @@ class SimEngine:
                     })
 
         # Phase 15: Adaptive state feedback update with actual deltas
+        if self.config.adaptive_enabled or self.config.neural_controller_enabled:
+            # Bucket this tick's events once per unit instead of rescanning the
+            # per-tick buffer for every active unit. Every buffered event
+            # carries the current tick, so per-unit buckets are equivalent to
+            # the previous filtered scans.
+            tick_events_by_unit: Dict[Optional[str], List[Event]] = {}
+            for tick_event in self.event_log._tick_events:
+                tick_events_by_unit.setdefault(tick_event.unit_id, []).append(tick_event)
+
         if self.config.adaptive_enabled:
             for unit in self.units:
                 if unit.is_active and hasattr(unit, '_adaptive_controller') and unit._adaptive_controller.enabled:
@@ -721,7 +745,7 @@ class SimEngine:
                     # Gather local feedback from this tick's events
                     feedback: Dict[str, float] = {}
                     power_delta = -self.config.power_drain_rate
-                    for e in self.event_log.current_tick_events():
+                    for e in tick_events_by_unit.get(unit.unit_id, ()):
                         if e.tick == self.tick_count and e.unit_id == unit.unit_id:
                             if e.event_type == EventType.HAZARD_ENCOUNTER:
                                 feedback["hazard_exposure"] = 1.0
@@ -777,7 +801,7 @@ class SimEngine:
                     # Gather local feedback from this tick's events
                     nc_feedback: Dict[str, float] = {}
                     nc_power_delta = -self.config.power_drain_rate
-                    for e in self.event_log.current_tick_events():
+                    for e in tick_events_by_unit.get(unit.unit_id, ()):
                         if e.tick == self.tick_count and e.unit_id == unit.unit_id:
                             if e.event_type == EventType.HAZARD_ENCOUNTER:
                                 nc_feedback["hazard_exposure"] = 1.0
@@ -808,13 +832,16 @@ class SimEngine:
                     has_hazard = False
                     res_str = 0.0
                     haz_str = 0.0
-                    for r in readings:
-                        if hasattr(r, 'resource_type') and r.resource_quantity > 0:
-                            has_resource = True
-                            res_str = max(res_str, r.resource_quantity)
-                        if hasattr(r, 'hazard_level') and r.hazard_level > 0:
-                            has_hazard = True
-                            haz_str = max(haz_str, r.hazard_level)
+                    # Single type probe: the scalar echo attributes never exist
+                    # on runtime readings, exactly as with the per-element form.
+                    if readings and hasattr(readings[0], 'resource_type'):
+                        for r in readings:
+                            if r.resource_quantity > 0:
+                                has_resource = True
+                                res_str = max(res_str, r.resource_quantity)
+                            if r.hazard_level > 0:
+                                has_hazard = True
+                                haz_str = max(haz_str, r.hazard_level)
 
                     field_sum_nc = unit._field_tracker.get_summary(self.tick_count)
                     signal_obs = field_sum_nc.recent_signal_count > 0

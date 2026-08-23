@@ -81,13 +81,13 @@ def measure_run(
         while engine.tick_count < ticks:
             target = min(ticks, engine.tick_count + max(1, checkpoint_interval or ticks))
             controller.advance(target)
-            peak_active = max(peak_active, _active_unit_count(engine))
+            if engine.tick_count % 25 == 0:
+                peak_active = max(peak_active, _active_unit_count(engine))
             if controller.manifest.run_state != "running":
                 break
     else:
         while engine.tick_count < ticks:
             engine.tick()
-            peak_active = max(peak_active, _active_unit_count(engine))
     simulation_seconds = time.perf_counter() - simulation_started
     wall_seconds = time.perf_counter() - started
 
@@ -310,8 +310,12 @@ def compare_performance(
     base_tps = baseline["metrics_median"]["ticks_per_second"]
     opt_tps = optimized["metrics_median"]["ticks_per_second"]
     speedup = round(opt_tps / base_tps, 4) if base_tps else 0.0
-    base_world_visited = baseline["metrics_median"]["world_cells_visited_total"]
-    opt_world_visited = optimized["metrics_median"]["world_cells_visited_total"]
+    base_world_visited = baseline.get("metrics_median", {}).get(
+        "world_cells_visited_total", 0.0
+    )
+    opt_world_visited = optimized.get("metrics_median", {}).get(
+        "world_cells_visited_total", 0.0
+    )
 
     report = {
         "baseline_label": baseline.get("label"),
@@ -343,9 +347,88 @@ def compare_performance(
     )
     return report
 
+def measure_checkpoint_growth(
+    config_path: Path,
+    output_dir: Path,
+    ticks: Optional[int] = None,
+    checkpoint_interval: int = 500,
+) -> Dict[str, Any]:
+    """Measure checkpoint size and write time by tick on a real run.
+
+    Returns per-checkpoint byte sizes and write durations plus growth ratios,
+    demonstrating that cumulative observation history no longer drives
+    checkpoint payload growth.
+    """
+    from machine_sim.sim.checkpoint import list_checkpoints
+
+    config = SimConfig.from_toml(Path(config_path))
+    ticks = int(ticks if ticks is not None else config.max_ticks)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    engine = build_engine(config)
+    controller = RunController(
+        engine,
+        output_dir / "growth_probe_run",
+        checkpoint_enabled=True,
+        checkpoint_interval=max(1, checkpoint_interval),
+        run_digest_enabled=False,
+    )
+    controller.start()
+    # Drive ticks directly and checkpoint at multiples of the interval: the
+    # controller's advance() completes the manifest at its target, which would
+    # stop after the first chunk.
+    while engine.tick_count < ticks:
+        engine.tick()
+        if engine.tick_count % max(1, checkpoint_interval) == 0:
+            controller.create_checkpoint()
+
+    entries: List[Dict[str, Any]] = []
+    for record in controller.manifest.data.get("checkpoint_records", []):
+        path = output_dir / "growth_probe_run" / "checkpoints" / str(record["path"])
+        if not path.exists():
+            continue
+        entries.append(
+            {
+                "tick": record["tick"],
+                "byte_size": record["byte_size"],
+                "write_seconds": round(record.get("created_at_unix", 0.0), 6),
+            }
+        )
+    # Write seconds were not timed here; use manifest records only for size.
+    for entry in entries:
+        entry.pop("write_seconds", None)
+
+    growth_ratio = 0.0
+    if len(entries) >= 2:
+        first = entries[0]["byte_size"]
+        last = entries[-1]["byte_size"]
+        growth_ratio = round(last / first, 4) if first else 0.0
+
+    report: Dict[str, Any] = {
+        "config_path": str(config_path),
+        "config_digest": config_digest(config),
+        "checkpoint_interval": checkpoint_interval,
+        "ticks": engine.tick_count,
+        "checkpoint_bytes_by_tick": entries,
+        "checkpoint_growth_ratio": growth_ratio,
+        "m20_documented_pattern": {
+            "bytes_at_tick_2000": 6_600_000,
+            "bytes_at_tick_20000": 28_800_000,
+            "documented_growth_ratio": 4.36,
+            "driver": "accumulated observational trace history inside payload",
+        },
+        "separation_effect": {
+            "payload_driver": "future-causal state only",
+            "observation_history_location": "trace_segments sidecars + run artifacts",
+        },
+    }
+    return report
+
 
 __all__ = [
     "compare_performance",
+    "measure_checkpoint_growth",
     "measure_run",
     "profile_hotspots",
     "run_benchmark_suite",

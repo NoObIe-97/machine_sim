@@ -386,6 +386,9 @@ class RunController:
             max(1, int(deep_digest_interval)) if deep_digest_interval else None
         )
         self.deep_digest_path = Path(deep_digest_path) if deep_digest_path else None
+        # M21: path of the most recent output-only trace sidecar written by
+        # this controller (pause/stop checkpoints), if any.
+        self.last_trace_sidecar: Optional[Path] = None
 
     @property
     def run_digest(self) -> str:
@@ -448,6 +451,16 @@ class RunController:
         checkpoint_file: Optional[Path] = None
         if self.checkpoint_enabled:
             checkpoint_file = self.create_checkpoint()
+            # M21: persist the excluded output-only trace history beside the
+            # checkpoint set so a pause never drops observation data.
+            from machine_sim.sim.checkpoint import write_trace_sidecar
+
+            self.last_trace_sidecar = write_trace_sidecar(
+                self.engine,
+                self.output_dir,
+                self.engine.tick_count,
+                self.manifest.run_id,
+            )
         record = {
             "request_id": request["request_id"],
             "requested_state": request["requested_state"],
@@ -566,7 +579,19 @@ def resume_controller(
         )
     if target_ticks is not None:
         engine.max_ticks = int(target_ticks)
+    # M21: rehydrate the output-only observation history from the latest trace
+    # sidecar so post-run artifacts cover the complete run across the pause.
+    from machine_sim.sim.checkpoint import load_latest_trace_sidecar, rehydrate_output_only_state
+
+    sidecar_document = load_latest_trace_sidecar(output_dir)
+    rehydrated_attributes = 0
+    if sidecar_document and sidecar_document.get("run_id") == manifest.run_id:
+        rehydrated_attributes = rehydrate_output_only_state(
+            engine, sidecar_document.get("sections", {})
+        )
     controller = RunController(engine, output_dir, manifest=manifest)
+    controller.rehydrated_trace_attributes = rehydrated_attributes
+    controller.resumed_from_tick = int(document.get("tick", engine.tick_count))
     manifest.transition(RUN_STATE_RUNNING)
     manifest.save()
     return controller

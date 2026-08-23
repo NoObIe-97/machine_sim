@@ -38,7 +38,7 @@ class ActionResult:
     data: Dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(slots=True)
 class Component:
     name: str
     max_health: float = 1.0
@@ -47,7 +47,7 @@ class Component:
     is_critical: bool = False
 
 
-@dataclass
+@dataclass(slots=True)
 class SensorReading:
     tick: int
     position: Tuple[int, int]
@@ -57,7 +57,7 @@ class SensorReading:
     signal_strength: float = 1.0
 
 
-@dataclass
+@dataclass(slots=True)
 class MemoryEntry:
     tick: int
     event_type: str
@@ -115,8 +115,8 @@ class MachineUnit(ABC):
         ...
 
     def receive_observations(self, readings: List[SensorReading], tick: int) -> None:
-        for r in readings:
-            self.sensor_readings.append(r)
+        if readings:
+            self.sensor_readings.extend(readings)
 
     def apply_result(self, result: ActionResult, tick: int) -> None:
         self.power_reserve = max(0.0, min(self.max_power,
@@ -151,6 +151,26 @@ class MachineUnit(ABC):
             components=copy.deepcopy(self.components),
             sensor_readings=tuple(copy.deepcopy(self.sensor_readings)),
             local_memory=tuple(copy.deepcopy(self.local_memory)),
+            action_budget=self.action_budget,
+            is_active=self.is_active,
+            unit_class=type(self).__name__,
+        )
+
+    def validation_view(self) -> MachineState:
+        """Build a MachineState for read-only validation without copying.
+
+        ``validate_agent_state`` only reads field names, bounds, and labels and
+        never mutates its input, so aliasing live containers is safe and avoids
+        a full deep copy per active unit per tick.
+        """
+        return MachineState(
+            unit_id=self.unit_id,
+            position=self.position,
+            power_reserve=self.power_reserve,
+            max_power=self.max_power,
+            components=self.components,
+            sensor_readings=tuple(self.sensor_readings),
+            local_memory=tuple(self.local_memory),
             action_budget=self.action_budget,
             is_active=self.is_active,
             unit_class=type(self).__name__,
