@@ -61,6 +61,8 @@
 - `180e7089e10132d7f680d49576c67a230b1e0bc5` — M22 prompt delivery
 - `0e4602ec417807f7cf5e0ddd6a834b313d9b3ae0` — M22 implementation: executable design-program substrate, deterministic bounded interpreter, program transfer/variation, checkpoint/digest integration, independent judge
 - `8191b187f99a7b7e0aed9db4f2ca768be840bd84` — M22A correction: transactional fabrication finalization, lineage consistency, judge hardening to 31 live-probe checks
+- `955b343bf66a11e6c0d7a0c938e907bcaf1bb73e` — M22 stage-closing documentation sync
+- `0d83c5f09e69fa329a17ddffb63c503e2eb8ca56` — M22A stage-closing documentation sync
 
 ## Branch Name
 `feature/milestone-1`
@@ -69,10 +71,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-569 passed in 22.33s (0 failed)
+614 passed in 24.76s (0 failed)
 
 ## Coverage (Final)
-78.31%
+79.78%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -134,9 +136,8 @@ analysis, no-self-replication structure)
 | M19 | architecture variation with dimension-changing transfer, judge PASS |
 | M20 | 20000 ticks, process-isolated pause/resume equivalence, judge PASS |
 | M21 | sparse runtime 2.5594x, deep-digest zero mismatches, checkpoint growth 0.99, judge 21/21 PASS |
-| M22 | design-program substrate: canonical compatibility proven, 6 transfers (2 zero-change, 3 phenotype-changed), pause/resume equivalent, judge 25/25 PASS |
+| M22 | design-program substrate: canonical compatibility proven, 6 transfers (2 zero-change, 3 phenotype-changed), pause/resume equivalent, judge 31/31 PASS (includes the six M22A transactional-finalization probes) |
 | M22A | transactional finalization: invalid program commits nothing (attempts+1, failures+1, successes/lineage/units/occupancy unchanged), costs exact once, judge hardened to 31/31 PASS |
-| M21 | deep-digest zero mismatches across all series, primary speedup 2.5594x, checkpoint growth ratio 0.99 vs 4.36 documented, population tiers 10/100/1000 executed, 21/21 judge PASS |
 
 ## M21 Demo Output
 
@@ -244,6 +245,10 @@ Self-replication: NOT implemented (structural probe enforced).
 - `docs/milestone_16_report.md`
 - `docs/milestone_15_report.md`
 - `docs/milestone_14_report.md`
+
+## Next Milestone
+
+Milestone 23 - Unit-Executed Program Copying and Successor Construction (not started; extends the M22 substrate with bounded copy/allocation/division-like machine operations so successor production becomes unit-executed behavior).
 
 ## Clean Working Tree
 Clean after final commit and push.
