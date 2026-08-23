@@ -1,4 +1,4 @@
-# Milestone 21 Final Review Package
+# Milestone 22 Final Review Package
 
 ## Commit History
 
@@ -57,6 +57,9 @@
 - `b679d23` — M21 prompt delivery / reference-freeze point
 - `23decf5559530e9edf88ffb98124e58b10f09051` — M21 oracle/preflight: deep semantic-state digest, frozen reference trajectories, benchmark harness
 - `6377a3aa19d5017d3052b82c5dca92b1b6034619` — M21 optimization implementation: sparse runtime, checkpoint trace separation, independent judge
+- `a171caacf1b3bfec66409636e27fcc290ae1a4cd` — M21 accepted starting state (M22 baseline)
+- `180e7089e10132d7f680d49576c67a230b1e0bc5` — M22 prompt delivery
+- `0e4602ec417807f7cf5e0ddd6a834b313d9b3ae0` — M22 implementation: executable design-program substrate, deterministic bounded interpreter, program transfer/variation, checkpoint/digest integration, independent judge
 
 ## Branch Name
 `feature/milestone-1`
@@ -95,12 +98,17 @@ M19_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 M20_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 
 ## M21 Judge Result
-M21_JUDGE_STATUS: PASS (21/21 checks passed, 0 SKIP, strict exact-PASS-only;
-live probes for digest determinism, sensitivity, output-only independence,
-sparse-world equivalence, checkpoint separation; regression evidence taken
-only from judge-result artifacts)
+M21_JUDGE_STATUS: PASS (subprocess-captured on M22 code, exit 0; oracle artifacts regenerated fresh with zero mismatches)
 
-## Full M1-M21 Regression Summary
+## M22 Judge Result
+M22_JUDGE_STATUS: PASS (25/25 checks passed, 0 SKIP, strict exact-PASS-only;
+live probes for schema/digest determinism, interpreter bounds, instruction-set
+completeness, descriptor compatibility, ownership, variation determinism and
+mechanisms, bounds, causality, dimension-changing resize, cost monotonicity,
+malformed handling, deep-digest sensitivity, checkpoint roundtrip, read-only
+analysis, no-self-replication structure)
+
+## Full M1-M22 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -124,6 +132,8 @@ only from judge-result artifacts)
 | M18 | variant sensitivity sweep, judge PASS |
 | M19 | architecture variation with dimension-changing transfer, judge PASS |
 | M20 | 20000 ticks, process-isolated pause/resume equivalence, judge PASS |
+| M21 | sparse runtime 2.5594x, deep-digest zero mismatches, checkpoint growth 0.99, judge 21/21 PASS |
+| M22 | design-program substrate: canonical compatibility proven, 6 transfers (2 zero-change, 3 phenotype-changed), pause/resume equivalent, judge 25/25 PASS |
 | M21 | deep-digest zero mismatches across all series, primary speedup 2.5594x, checkpoint growth ratio 0.99 vs 4.36 documented, population tiers 10/100/1000 executed, 21/21 judge PASS |
 
 ## M21 Demo Output
@@ -159,8 +169,46 @@ Tests: 569 passed. Coverage: 78.31%. Guardrails: pass.
 Judges: M14-M20 all PASS on optimized code. M21 judge: 21/21 PASS.
 ```
 
+## M22 Demo Output
+
+```text
+Canonical compatibility run (variation disabled):
+  canonical program decodes accepted baseline architecture exactly;
+  twin units share weights/masks/actions; engine-level shallow chain and
+  projected deep digests match at all 6 samples; standard deep digest
+  still distinguishes representation metadata
+
+Variable-program run (2400 ticks, 24 initial units):
+  successful transfers 6/6; content-changed 4; zero-change 2;
+  length-changed 2; phenotype-changed 3; distinct decoded architectures 4;
+  out-of-bound values 0; interpreter crashes 0
+
+Process-isolated pause/resume: pause at tick 650, resumed span 250,
+  9 common samples, deep mismatch count 0, shallow mismatch count 0
+
+Decode throughput: canonical 63,397 programs/s; varied mean 60,754 programs/s
+Cost model: 0.5 base + 0.01 per executed instruction, charged at construction
+
+Tests: 609 passed. Coverage: 79.12%. Guardrails: pass.
+Judges: M14-M21 all PASS on M22 code. M22 judge: 25/25 PASS.
+Self-replication: NOT implemented (structural probe enforced).
+```
+
 ## Artifact Paths
 
+- `output/demo_m22/design_program_initial_state.jsonl`
+- `output/demo_m22/design_program_transfer_trace.jsonl`
+- `output/demo_m22/design_program_execution_trace.jsonl`
+- `output/demo_m22/design_program_distribution_trace.jsonl`
+- `output/demo_m22/design_program_lineage_summary.json`
+- `output/demo_m22/design_program_compatibility_report.json`
+- `output/demo_m22/design_program_variation_summary.json`
+- `output/demo_m22/design_program_run_summary.json`
+- `output/demo_m22/design_program_performance.json`
+- `output/demo_m22/program_pause_resume_equivalence_report.json`
+- `output/demo_m22/regression/m14_m21_subprocess_results.json`
+- `output/demo_m22/test_summary.json`
+- `output/demo_m22/milestone_22_judge_result.json`
 - `output/demo_m21/reference/reference_run_summary.json`
 - `output/demo_m21/reference/reference_config_manifest.json`
 - `output/demo_m21/reference/deep_state_digest_trace.jsonl`
@@ -184,6 +232,7 @@ Judges: M14-M20 all PASS on optimized code. M21 judge: 21/21 PASS.
 
 ## Report Paths
 
+- `docs/milestone_22_report.md`
 - `docs/milestone_21_report.md`
 - `docs/milestone_20_report.md`
 - `docs/milestone_19_report.md`
