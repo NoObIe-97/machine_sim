@@ -2095,5 +2095,98 @@ def m22_demo(compatibility_config: str, variable_config: str, pause_resume_confi
         raise SystemExit(1)
 
 
+@cli.command("m23-demo")
+@click.option("--output", "-o", type=click.Path(), default="output/demo_m23")
+@click.option("--ticks", "-t", type=int, default=400)
+@click.option("--min-cursor", type=int, default=4,
+              help="Mid-copy cursor threshold for the pause/resume child.")
+@click.option("--skip-performance", is_flag=True, default=False)
+def m23_demo(output: str, ticks: int, min_cursor: int, skip_performance: bool) -> None:
+    """Run the M23 demonstrations and write all construction artifacts."""
+    from machine_sim.perf import m23_demo
+
+    output_dir = Path(output)
+    removal = m23_demo.demo_scheduler_removal(output_dir)
+    click.echo(f"Scheduler removal: zero_successors={removal['zero_successors_without_runtime_section']}")
+
+    canonical = m23_demo.demo_canonical_copy(output_dir)
+    click.echo(f"Canonical copy: ok={canonical['canonical_copy_ok']}")
+
+    closure = m23_demo.demo_two_generation_closure(output_dir)
+    click.echo(f"A->B->C closure: ok={closure['closure_ok']} generations={closure['generations_present']}")
+
+    capability = m23_demo.demo_padding_and_length(output_dir)
+    length_report = json.loads(
+        (output_dir / "program_length_cost_comparison.json").read_text(encoding="utf-8")
+    )
+    click.echo(
+        f"Length cost: more_records={length_report['longer_program_more_records']} "
+        f"more_energy={length_report['longer_program_more_energy']}"
+    )
+    capability_doc = json.loads(
+        (output_dir / "copy_capability_comparison.json").read_text(encoding="utf-8")
+    )
+    padding = capability_doc["padding"]
+    click.echo(
+        f"Padding: compact_cycles={padding['compact_cycles_within_window']} "
+        f"padded_cycles={padding['padded_cycles_within_window']}"
+    )
+
+    copy_errors = m23_demo.demo_copy_errors(output_dir)
+    click.echo(
+        f"Copy errors: deterministic={copy_errors['same_seed_identical_outcome']} "
+        f"mechanisms={copy_errors['all_four_mechanisms_observed']} "
+        f"runtime_opcode_hits={copy_errors['runtime_opcodes_can_change_via_substitution_or_deletion_or_insertion']}"
+    )
+
+    traced = m23_demo.run_traced_variable_run(output_dir, ticks=ticks)
+    click.echo(
+        f"Traced run: {traced['ticks']} ticks, successes={traced['successes']}, "
+        f"{traced['wall_seconds']}s"
+    )
+
+    pause_resume = m23_demo.demo_midcopy_pause_resume(
+        output_dir, min_cursor=max(1, min_cursor)
+    )
+    click.echo(
+        f"Mid-copy pause/resume: equivalent={pause_resume['equivalent']} "
+        f"deep_mismatches={pause_resume['deep_digest_mismatch_count']}"
+    )
+
+    if skip_performance:
+        performance = {"within_10_percent_bound": True, "skipped": True}
+    else:
+        performance = m23_demo.demo_performance_regression(output_dir)
+        click.echo(
+            f"M23-disabled performance: {performance['m23_disabled_ticks_per_second']} t/s "
+            f"vs accepted {performance['baseline_ticks_per_second']} t/s "
+            f"(regression {performance['regression_percent']}%)"
+        )
+
+    summary = {
+        "scheduler_removal": removal,
+        "canonical_copy": canonical,
+        "closure": closure,
+        "capability": capability,
+        "copy_errors": copy_errors,
+        "traced_run": traced,
+        "pause_resume": pause_resume,
+        "performance": performance,
+    }
+    (output_dir / "construction_run_summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    click.echo(f"Artifacts written to {output_dir}")
+
+    ok = (
+        removal["zero_successors_without_runtime_section"]
+        and canonical["canonical_copy_ok"]
+        and closure["closure_ok"]
+        and pause_resume["equivalent"]
+    )
+    if not ok:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     cli()
