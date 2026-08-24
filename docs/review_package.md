@@ -1,4 +1,4 @@
-# Milestone 22 Final Review Package
+# Milestone 23 Final Review Package
 
 ## Commit History
 
@@ -63,6 +63,12 @@
 - `8191b187f99a7b7e0aed9db4f2ca768be840bd84` — M22A correction: transactional fabrication finalization, lineage consistency, judge hardening to 31 live-probe checks
 - `955b343bf66a11e6c0d7a0c938e907bcaf1bb73e` — M22 stage-closing documentation sync
 - `0d83c5f09e69fa329a17ddffb63c503e2eb8ca56` — M22A stage-closing documentation sync
+- `4f3f30693385849604c5080c5873de517502bdca` — M22B prompt delivery
+- `5a86fc0a8e589b92f9af8fbc6ecb898ca243f4e5` — M22B stage-closing documentation sync (accepted M22 final head)
+- `fcce0d8c97dadcc2dd19dd791d64fb461720bfb4` — M23 prompt delivery
+- `968a40d32eccf3ca6b675c12c8f716ef62f2ac5c` — M23 commit A: runtime copy oracle/substrate
+- `dc59ea963d8fdfb29b7cf842ce6c1abfee7065c5` — M23 commit B: unit-executed construction engine integration
+- `c389c6681d373cf2e38bdf518e1c8474e00ee4f4` — M23 commit C: demonstrations, independent judge, stage-closing evidence
 
 ## Branch Name
 `feature/milestone-1`
@@ -71,10 +77,10 @@
 https://github.com/NoObIe-97/machine_sim.git
 
 ## Test Results (Final)
-614 passed in 24.76s (0 failed)
+637 passed in 26.55s (0 failed)
 
 ## Coverage (Final)
-79.78%
+80.23%
 
 ## Guardrail Result
 All guardrail checks passed.
@@ -104,12 +110,18 @@ M20_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 M21_JUDGE_STATUS: PASS (subprocess-captured on M22 code, exit 0; oracle artifacts regenerated fresh with zero mismatches)
 
 ## M22 Judge Result
-M22_JUDGE_STATUS: PASS (31/31 checks passed, 0 SKIP, strict exact-PASS-only;
+M22_JUDGE_STATUS: PASS (31/31 checks passed on M23 code, 0 SKIP, strict exact-PASS-only;
 live probes for schema/digest determinism, interpreter bounds, instruction-set
 completeness, descriptor compatibility, ownership, variation determinism and
 mechanisms, bounds, causality, dimension-changing resize, cost monotonicity,
 malformed handling, deep-digest sensitivity, checkpoint roundtrip, read-only
 analysis, no-self-replication structure)
+## M23 Judge Result
+M23_JUDGE_STATUS: PASS (37/37 checks passed, 0 SKIP, strict exact-PASS-only;
+live probes for all mechanism claims including scheduler removal, copy
+semantics, commit requirements, broken programs, causality, digest
+sensitivity, checkpoint roundtrip, analysis read-only; artifact checks for
+multi-generation closure and performance benchmarks)
 
 ## Full M1-M22 Regression Summary
 
@@ -138,6 +150,7 @@ analysis, no-self-replication structure)
 | M21 | sparse runtime 2.5594x, deep-digest zero mismatches, checkpoint growth 0.99, judge 21/21 PASS |
 | M22 | design-program substrate: canonical compatibility proven, 6 transfers (2 zero-change, 3 phenotype-changed), pause/resume equivalent, judge 31/31 PASS (includes the six M22A transactional-finalization probes) |
 | M22A | transactional finalization: invalid program commits nothing (attempts+1, failures+1, successes/lineage/units/occupancy unchanged), costs exact once, judge hardened to 31/31 PASS |
+| M23 | unit-executed construction: A→B→C zero-error closure, scheduler removed in new mode, mid-copy pause/resume zero mismatches, judge 37/37 PASS |
 
 ## M21 Demo Output
 
@@ -198,6 +211,29 @@ Invalid-program accounting verified live: attempts+1, successes+0, lineage+0, un
 Self-replication: NOT implemented (structural probe enforced).
 ```
 
+## M23 Demo Output
+
+```text
+Scheduler removal proof: dev-only program + abundant resources -> zero successors
+Canonical copy-capable program: whole source copied record-for-record,
+  successor digest equals source digest, accounting exactly once
+A->B->C zero-error closure: identical program digests across generations,
+  lineage edges valid, each commit matches a registered unit
+Broken programs: no COPY_RECORD -> no successes; no COMMIT -> no lineage edges
+Padding comparison: compact completes more cycles than padded (6 vs 1 in window)
+Length comparison: longer program copies more records, costs more energy
+Copy errors: deterministic under same seed, all 4 mechanisms observed,
+  runtime construction opcodes can be changed and created by copy errors
+Mid-copy pause/resume: process-isolated, deep mismatch count 0,
+  shallow mismatch count 0, final lineage and accounting equal
+Performance (M23 disabled): profiling confirms no new hotspots;
+  thermal/sustained-load variance documented with evidence
+
+Tests: 637 passed. Coverage: 80.23%. Guardrails: pass.
+Judges: M14-M22 all PASS. M23 judge: 37/37 PASS.
+Self-replication substrate present; open-ended evolution NOT claimed.
+```
+
 ## Artifact Paths
 
 - `output/demo_m22/design_program_initial_state.jsonl`
@@ -213,6 +249,18 @@ Self-replication: NOT implemented (structural probe enforced).
 - `output/demo_m22/regression/m14_m21_subprocess_results.json`
 - `output/demo_m22/test_summary.json`
 - `output/demo_m22/milestone_22_judge_result.json`
+- `output/demo_m23/construction_runtime_trace.jsonl`
+- `output/demo_m23/program_copy_trace.jsonl`
+- `output/demo_m23/construction_cycle_trace.jsonl`
+- `output/demo_m23/construction_lineage_summary.json`
+- `output/demo_m23/copy_error_summary.json`
+- `output/demo_m23/program_length_cost_comparison.json`
+- `output/demo_m23/copy_capability_comparison.json`
+- `output/demo_m23/canonical_closure_report.json`
+- `output/demo_m23/midcopy_pause_resume_equivalence_report.json`
+- `output/demo_m23/performance_regression.json`
+- `output/demo_m23/test_summary.json`
+- `output/demo_m23/milestone_23_judge_result.json`
 - `output/demo_m21/reference/reference_run_summary.json`
 - `output/demo_m21/reference/reference_config_manifest.json`
 - `output/demo_m21/reference/deep_state_digest_trace.jsonl`
@@ -236,6 +284,7 @@ Self-replication: NOT implemented (structural probe enforced).
 
 ## Report Paths
 
+- `docs/milestone_23_report.md`
 - `docs/milestone_22_report.md`
 - `docs/milestone_21_report.md`
 - `docs/milestone_20_report.md`
