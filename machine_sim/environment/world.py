@@ -67,6 +67,11 @@ class World:
         # insertion order, so iteration reproduces the reference full-grid
         # event ordering exactly while skipping inert cells.
         self._active_entries: List[Tuple[Tuple[int, int], Cell]] = []
+        # M23: multi-tick construction reservations. Keys are target cells,
+        # values are reservation owner keys ("unit_id:cycle_index"). A
+        # reserved cell is neither occupied nor sensed as occupied; it only
+        # blocks placement arbitration until released or committed.
+        self.reserved_cells: Dict[Tuple[int, int], str] = {}
         # M21 benchmark counters: observation-only, never read by the tick loop.
         self.update_calls = 0
         self.cells_visited_total = 0
@@ -192,6 +197,39 @@ class World:
         for sig in self.signals:
             sig.intensity = max(0.0, sig.intensity - sig.decay_rate)
         return events
+
+    def reserve_placement(
+        self, source_position: Tuple[int, int], owner_key: str
+    ) -> Optional[Tuple[int, int]]:
+        """Reserve one free adjacent cell for a multi-tick construction cycle.
+
+        Deterministic row-major arbitration: the first adjacent cell that is
+        neither occupied nor already reserved wins. Returns None when no
+        candidate exists.
+        """
+        x, y = source_position
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                if dx == 0 and dy == 0:
+                    continue
+                candidate = (x + dx, y + dy)
+                cell = self.grid.get(candidate)
+                if cell is None or cell.unit_id is not None:
+                    continue
+                if candidate in self.reserved_cells:
+                    continue
+                self.reserved_cells[candidate] = owner_key
+                return candidate
+        return None
+
+    def release_reservation(
+        self, position: Optional[Tuple[int, int]], owner_key: str
+    ) -> None:
+        """Release a reservation held by ``owner_key`` at ``position``."""
+        if position is None:
+            return
+        if self.reserved_cells.get(position) == owner_key:
+            self.reserved_cells.pop(position, None)
 
     def emit_signal(self, source_unit_id: str, position: Tuple[int, int],
                     pattern_id: int, intensity: float, radius: int,

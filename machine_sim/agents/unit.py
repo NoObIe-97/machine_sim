@@ -62,6 +62,7 @@ class MachineUnitImpl(MachineUnit):
         neural_seed: int = 42,
         neural_architecture_descriptor: Optional[NeuralArchitectureDescriptor] = None,
         design_program: Optional[DesignProgram] = None,
+        unit_executed_construction_enabled: bool = False,
         design_execution_bounds: Optional[DesignExecutionBounds] = None,
         design_program_length_bounds: Optional[Tuple[int, int]] = None,
     ) -> None:
@@ -101,6 +102,16 @@ class MachineUnitImpl(MachineUnit):
         else:
             self._design_program_execution_status = None
         self._architecture_descriptor = neural_architecture_descriptor
+        # M23: future-causal runtime construction state (copy cursor/buffer/
+        # RNG/reservations). Present whenever program mode can execute the
+        # runtime construction section.
+        from machine_sim.agents.program_construction import init_construction_state
+
+        self._construction_state = init_construction_state(
+            self._design_program,
+            unit_executed_construction_enabled,
+            (neural_seed, unit_id),
+        )
         if neural_controller_enabled:
             # Use architecture descriptor values if provided
             h_size = neural_hidden_size

@@ -73,6 +73,13 @@ OP_DISABLE_PLASTICITY = 8
 OP_NO_OP = 9
 OP_END = 10
 
+# M23 runtime-construction opcodes. The values were reserved (91-93) and
+# remain unknown/no-op to the M22 developmental interpreter; the separate M23
+# runtime construction executor (program_construction.py) gives them meaning.
+OP_CONSTRUCTION_BEGIN = 91
+OP_COPY_RECORD = 92
+OP_CONSTRUCTION_COMMIT = 93
+
 OPCODE_NAMES: Dict[int, str] = {
     OP_SET_HIDDEN: "SET_HIDDEN",
     OP_ADJUST_HIDDEN: "ADJUST_HIDDEN",
@@ -86,17 +93,31 @@ OPCODE_NAMES: Dict[int, str] = {
     OP_END: "END",
 }
 
+RUNTIME_OPCODE_NAMES: Dict[int, str] = {
+    OP_CONSTRUCTION_BEGIN: "CONSTRUCTION_BEGIN",
+    OP_COPY_RECORD: "COPY_RECORD",
+    OP_CONSTRUCTION_COMMIT: "CONSTRUCTION_COMMIT",
+}
+
 ALL_OPCODES: Tuple[int, ...] = tuple(OPCODE_NAMES.keys())
+
+# M23 copy-error opcode universe: developmental + runtime construction ops,
+# so bounded copy errors can lose, change, or create construction records.
+M23_ALL_OPCODES: Tuple[int, ...] = ALL_OPCODES + tuple(RUNTIME_OPCODE_NAMES.keys())
 
 # Opcodes whose operand is an integer-valued hidden-size quantity.
 _INTEGER_OPERAND_OPCODES = frozenset({OP_SET_HIDDEN, OP_ADJUST_HIDDEN})
 # Opcodes whose operand is ignored.
 _OPERAND_FREE_OPCODES = frozenset({OP_ENABLE_PLASTICITY, OP_DISABLE_PLASTICITY, OP_NO_OP, OP_END})
 
-# Opcodes reserved for a later unit-executed construction milestone. They are
-# deliberately absent from the dispatch table; their presence in a program is
-# handled by the unknown-opcode no-op policy.
-RESERVED_FUTURE_OPCODES: Tuple[int, ...] = (91, 92, 93)
+# Historical alias: the values were reserved before M23 gave them meaning in
+# the separate runtime executor. They remain unknown/no-op to the M22
+# developmental interpreter.
+RESERVED_FUTURE_OPCODES: Tuple[int, ...] = (
+    OP_CONSTRUCTION_BEGIN,
+    OP_COPY_RECORD,
+    OP_CONSTRUCTION_COMMIT,
+)
 
 
 @dataclass(slots=True)
@@ -716,6 +737,11 @@ def derive_program_rng(tick: int, unit_id: str, role: str) -> random.Random:
 __all__ = [
     "ALL_OPCODES",
     "DESIGN_INSTRUCTION_SET_VERSION",
+    "M23_ALL_OPCODES",
+    "OP_CONSTRUCTION_BEGIN",
+    "OP_CONSTRUCTION_COMMIT",
+    "OP_COPY_RECORD",
+    "RUNTIME_OPCODE_NAMES",
     "DESIGN_PROGRAM_SCHEMA_VERSION",
     "DesignExecutionBounds",
     "DesignProgram",

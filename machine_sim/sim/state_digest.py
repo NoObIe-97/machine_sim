@@ -96,6 +96,12 @@ def _world_snapshot(engine: Any) -> Dict[str, Any]:
         "height": world.height,
         "next_signal_id": world._next_signal_id,
         "current_tick": world._current_tick,
+        # M23: multi-tick construction reservations are future-causal (they
+        # arbitrate placement and are preserved through checkpoint/resume).
+        "reserved_cells": {
+            f"{pos[0]},{pos[1]}": owner
+            for pos, owner in sorted(world.reserved_cells.items())
+        },
         # Unit occupancy is future-causal: movement, sensing, proximity, and
         # placement all read cell.unit_id.
         "occupied_cells": {
@@ -297,6 +303,54 @@ def _unit_snapshot(unit: Any) -> Dict[str, Any]:
         execution_status = getattr(unit, "_design_program_execution_status", None)
         if execution_status is not None:
             snapshot["design_program_execution_status"] = str(execution_status)
+    # M23: runtime construction state is future-causal (copy cursor/buffer/
+    # RNG/reservation/costs drive successor construction across ticks).
+    construction_state = getattr(unit, "_construction_state", None)
+    if construction_state is not None:
+        from machine_sim.sim.state_digest import _rng_snapshot
+
+        snapshot["construction_runtime"] = {
+            "construction_enabled": bool(construction_state.construction_enabled),
+            "runtime_section_start": int(construction_state.runtime_section_start),
+            "runtime_program_counter": int(construction_state.runtime_program_counter),
+            "construction_phase": str(construction_state.construction_phase),
+            "construction_cycle_index": int(construction_state.construction_cycle_index),
+            "source_program_digest_at_begin": str(
+                construction_state.source_program_digest_at_begin
+            ),
+            "source_cursor": int(construction_state.source_cursor),
+            "target_copy_buffer": [
+                [int(pair[0]), float(pair[1])]
+                for pair in construction_state.target_copy_buffer
+            ],
+            "reserved_target_position": (
+                list(construction_state.reserved_target_position)
+                if construction_state.reserved_target_position is not None
+                else None
+            ),
+            "provisional_successor_id": (
+                str(construction_state.provisional_successor_id)
+                if construction_state.provisional_successor_id is not None
+                else None
+            ),
+            "copy_rng": (
+                _rng_snapshot(construction_state.copy_rng)
+                if construction_state.copy_rng is not None
+                else None
+            ),
+            "cycle_start_tick": int(construction_state.cycle_start_tick),
+            "executed_runtime_instruction_count": int(
+                construction_state.executed_runtime_instruction_count
+            ),
+            "copied_record_count": int(construction_state.copied_record_count),
+            "copy_error_count": int(construction_state.copy_error_count),
+            "accumulated_copy_cost": float(construction_state.accumulated_copy_cost),
+            "last_construction_fault": (
+                str(construction_state.last_construction_fault)
+                if construction_state.last_construction_fault is not None
+                else None
+            ),
+        }
     return snapshot
 
 
