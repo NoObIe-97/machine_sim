@@ -65,6 +65,9 @@ FIELD_EXCLUSIONS: Dict[str, Set[str]] = {
         "_design_program_transfer_trace",
         "_design_program_execution_trace",
         "_design_program_distribution_trace",
+        "_construction_runtime_trace",
+        "_program_copy_trace",
+        "_construction_cycle_trace",
         "_total_program_execution_cost",
     },
     "machine_sim.analysis.correlation:SignalCorrelator": {
@@ -145,6 +148,9 @@ FIELD_DEFAULTS: Dict[str, Dict[str, Callable[[], Any]]] = {
         "_design_program_transfer_trace": _LIST,
         "_design_program_execution_trace": _LIST,
         "_design_program_distribution_trace": _LIST,
+        "_construction_runtime_trace": _LIST,
+        "_program_copy_trace": _LIST,
+        "_construction_cycle_trace": _LIST,
         "_total_program_execution_cost": _FLOAT,
     },
     "machine_sim.analysis.correlation:SignalCorrelator": {

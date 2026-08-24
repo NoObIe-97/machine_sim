@@ -115,9 +115,13 @@ def init_construction_state(
     seed_parts: Tuple[int, str],
 ) -> ConstructionRuntimeState:
     """Build initial future-causal runtime state for one program-backed unit."""
-    start = runtime_section_bounds(program) if enabled else None
+    if program is None or not enabled:
+        return ConstructionRuntimeState(
+            construction_enabled=False, runtime_section_start=-1, runtime_program_counter=-1
+        )
+    start = runtime_section_bounds(program)
     state = ConstructionRuntimeState(
-        construction_enabled=bool(enabled and start is not None),
+        construction_enabled=start is not None,
         runtime_section_start=start if start is not None else -1,
         runtime_program_counter=start if start is not None else -1,
     )
@@ -234,7 +238,9 @@ def execute_runtime_step(
     record = instructions[state.runtime_program_counter]
     trace["runtime_opcode"] = RUNTIME_OPCODE_NAMES.get(record.opcode, f"op_{record.opcode}")
     state.executed_runtime_instruction_count += 1
-    services.charge_runtime_instruction(unit_tag="unit")
+    # A successful step clears the previous fault; faults are per-step facts.
+    state.last_construction_fault = None
+    services.charge_runtime_instruction()
 
     if record.opcode == OP_CONSTRUCTION_BEGIN:
         if state.construction_phase != PHASE_IDLE:
@@ -244,6 +250,7 @@ def execute_runtime_step(
         elif services.begin_unit_construction(current_tick):
             trace["copy_operation"] = "construction_begin"
             trace["reserved_position"] = list(state.reserved_target_position or ())
+            state.runtime_program_counter += 1
         else:
             state.last_construction_fault = FAULT_BEGIN_FAILED
             trace["fault"] = FAULT_BEGIN_FAILED

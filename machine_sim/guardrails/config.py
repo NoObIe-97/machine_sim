@@ -51,6 +51,8 @@ ALLOWED_EVENT_LABELS: Set[str] = {
     "emit_signal", "signal_emitted", "signal_received",
     # Milestone 6 fabrication event types
     "fabrication_attempted", "fabrication_succeeded", "fabrication_failed",
+    # Milestone 23 unit-executed construction events
+    "construction_succeeded", "construction_failed",
 }
 
 # Allowed config keys
@@ -117,6 +119,13 @@ ALLOWED_CONFIG_KEYS: Set[str] = {
     "program_operand_mutation_probability",
     "program_insertion_probability",
     "program_deletion_probability",
+    # M23 unit-executed construction mode
+    "unit_executed_construction_enabled",
+    "runtime_construction_steps_per_tick",
+    "copy_records_per_copy_instruction",
+    "copy_error_probability",
+    "runtime_instruction_power_cost",
+    "copy_record_power_cost",
 }
 
 # Allowed memory event_type labels

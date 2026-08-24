@@ -134,6 +134,7 @@ def _register_initial_units(engine: SimEngine, cfg: SimConfig) -> None:
             neural_seed=cfg.seed,
             neural_architecture_descriptor=arch_desc,
             design_program=design_program,
+            unit_executed_construction_enabled=getattr(cfg, 'unit_executed_construction_enabled', False),
             design_execution_bounds=program_bounds,
             design_program_length_bounds=program_length_bounds,
         )

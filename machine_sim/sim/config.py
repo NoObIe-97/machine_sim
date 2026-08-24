@@ -104,6 +104,14 @@ class SimConfig:
     program_insertion_probability: float = 0.0
     program_deletion_probability: float = 0.0
 
+    # M23: unit-executed construction (copying) mode
+    unit_executed_construction_enabled: bool = False
+    runtime_construction_steps_per_tick: int = 1
+    copy_records_per_copy_instruction: int = 1
+    copy_error_probability: float = 0.0
+    runtime_instruction_power_cost: float = 0.01
+    copy_record_power_cost: float = 0.02
+
     @classmethod
     def from_toml(cls, path: Path) -> SimConfig:
         with open(path, "rb") as f:

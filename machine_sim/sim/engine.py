@@ -35,6 +35,295 @@ from machine_sim.sim.state import SimulationState
 
 logger = logging.getLogger(__name__)
 
+# M23 construction phases, mirrored from program_construction for services use.
+_PHASE_IDLE = "idle"
+_PHASE_COPYING = "copying"
+_PHASE_READY = "ready"
+
+
+class _UnitConstructionServices:
+    """Engine-provided services behind the M23 runtime construction executor.
+
+    The executor decides WHEN construction instructions run; this class
+    performs shared-world arbitration, physical cost consumption, successor
+    assembly, and M22A transactional success finalization.
+    """
+
+    def __init__(self, engine: Any, unit: Any, state: Any) -> None:
+        self.engine = engine
+        self.unit = unit
+        self.state = state
+
+    def charge_runtime_instruction(self) -> None:
+        amount = self.engine.config.runtime_instruction_power_cost
+        self.unit.power_reserve = max(0.0, self.unit.power_reserve - amount)
+        self.state.accumulated_copy_cost += amount
+
+    def charge_copy_record(self) -> None:
+        amount = self.engine.config.copy_record_power_cost
+        self.unit.power_reserve = max(0.0, self.unit.power_reserve - amount)
+        self.state.accumulated_copy_cost += amount
+
+    def _consume_local_material(self) -> bool:
+        world = self.engine.world
+        cell = world.grid.get(self.unit.position)
+        remaining = self.engine.config.fabrication_material_cost
+        if not cell or sum(r.quantity for r in cell.resources.values()) < remaining:
+            return False
+        for res in cell.resources.values():
+            if remaining <= 0:
+                break
+            if res.quantity >= remaining:
+                res.quantity -= remaining
+                remaining = 0.0
+            else:
+                remaining -= res.quantity
+                res.quantity = 0
+        return True
+
+    def begin_unit_construction(self, current_tick: int) -> bool:
+        engine = self.engine
+        unit = self.unit
+        state = self.state
+        cfg = engine.config
+
+        # Physical prerequisites only: ability to pay, local material,
+        # placement availability, finite capacity. No cooldown timer and no
+        # legacy eligibility ratio gates in unit-executed mode.
+        if len(engine.units) >= cfg.unit_capacity:
+            return False
+        if unit.power_reserve < cfg.fabrication_power_cost:
+            return False
+        if not self._consume_local_material():
+            return False
+        owner_key = f"{unit.unit_id}:{state.construction_cycle_index + 1}"
+        placement = engine.world.reserve_placement(unit.position, owner_key)
+        if placement is None:
+            return False
+
+        # Base construction power/material consumed exactly once at BEGIN.
+        unit.power_reserve = max(
+            0.0, unit.power_reserve - cfg.fabrication_power_cost
+        )
+
+        fabricator = engine.fabrication_engine
+        fabricator._next_unit_id += 1
+        provisional_id = f"unit-{fabricator._next_unit_id:04d}"
+
+        state.construction_cycle_index += 1
+        state.source_program_digest_at_begin = (
+            unit._design_program.program_digest()
+        )
+        state.source_cursor = 0
+        state.target_copy_buffer = []
+        state.reserved_target_position = placement
+        state.provisional_successor_id = provisional_id
+        state.cycle_start_tick = current_tick
+        state.last_construction_fault = None
+        state.construction_phase = _PHASE_COPYING
+        # Dedicated per-cycle copy RNG seeded from stable machine-native
+        # inputs; the Random object itself is preserved as future-causal RNG
+        # state through checkpoints.
+        if state.copy_rng is not None:
+            state.copy_rng.seed(
+                stable_seed(
+                    "construction_copy_cycle",
+                    int(cfg.seed),
+                    unit.unit_id,
+                    state.construction_cycle_index,
+                    state.source_program_digest_at_begin,
+                )
+            )
+        return True
+
+    def commit_unit_construction(self) -> Dict[str, Any]:
+        import random as _random
+
+        from machine_sim.agents.design_program import (
+            DesignExecutionBounds,
+            DesignProgramInterpreter,
+            InstructionRecord,
+        )
+        from machine_sim.agents.neural_architecture import resize_state_for_successor
+        from machine_sim.agents.unit import MachineUnitImpl
+
+        engine = self.engine
+        unit = self.unit
+        state = self.state
+        cfg = engine.config
+        owner_key = f"{unit.unit_id}:{state.construction_cycle_index}"
+        reserved_position = state.reserved_target_position
+
+        def fail(fault: str) -> Dict[str, Any]:
+            engine.world.release_reservation(reserved_position, owner_key)
+            engine._construction_cycle_trace.append({
+                "tick": engine.tick_count,
+                "unit_id": unit.unit_id,
+                "construction_cycle_index": state.construction_cycle_index,
+                "cycle_start_tick": state.cycle_start_tick,
+                "cycle_end_tick": engine.tick_count,
+                "status": f"failed:{fault}",
+                "copied_records": state.copied_record_count,
+            })
+            engine._record_event(Event(
+                tick=engine.tick_count,
+                event_type=EventType.CONSTRUCTION_FAILED,
+                unit_id=unit.unit_id,
+                data={"cause": fault,
+                      "construction_cycle_index": state.construction_cycle_index},
+            ))
+            return {"status": "failed", "fault": fault}
+
+        # Reservation must still belong to this cycle.
+        if engine.world.reserved_cells.get(reserved_position or (-1, -1)) != owner_key:
+            return fail("reservation_invalidated")
+        if not unit.is_active:
+            return fail("source_inactive")
+
+        target_instructions = [
+            InstructionRecord.from_pair(pair) for pair in state.target_copy_buffer
+        ]
+        if not (cfg.program_min_length <= len(target_instructions) <= cfg.program_max_length):
+            return fail("copied_length_out_of_bounds")
+        target_program = type(unit._design_program)(
+            schema_version=unit._design_program.schema_version,
+            instruction_set_version=unit._design_program.instruction_set_version,
+            instructions=target_instructions,
+        )
+
+        dev_bounds = DesignExecutionBounds(
+            minimum_hidden_size=cfg.minimum_hidden_size,
+            maximum_hidden_size=cfg.maximum_hidden_size,
+            initial_hidden_size=cfg.initial_hidden_size,
+            minimum_recurrence_density=cfg.minimum_recurrent_density,
+            maximum_recurrence_density=cfg.maximum_recurrent_density,
+            initial_recurrence_density=cfg.initial_recurrent_density,
+            minimum_plasticity_rate=cfg.minimum_plasticity_rate,
+            maximum_plasticity_rate=cfg.maximum_plasticity_rate,
+            initial_plasticity_rate=cfg.neural_plasticity_rate,
+            program_base_cost=cfg.program_base_cost,
+            program_per_instruction_cost=cfg.program_per_instruction_cost,
+        )
+        decode_result = DesignProgramInterpreter(dev_bounds).execute(
+            target_program,
+            program_length_bounds=(cfg.program_min_length, cfg.program_max_length),
+        )
+        decoded = decode_result.decoded_architecture
+        if decoded is None:
+            return fail("copied_program_decode_failed")
+
+        template = engine.fabrication_engine._create_template(unit, engine.rng)
+        source_desc = getattr(unit, "_architecture_descriptor", None)
+        successor = MachineUnitImpl(
+            unit_id=state.provisional_successor_id,
+            position=reserved_position,
+            signal_enabled=getattr(unit, "signal_enabled", False),
+            signal_pattern_count=getattr(unit, "signal_pattern_count", 3),
+            signal_energy_cost=getattr(unit, "signal_energy_cost", 2.0),
+            signal_default_radius=getattr(unit, "signal_default_radius", 3),
+            signal_default_decay=getattr(unit, "signal_default_decay", 0.1),
+            signal_default_duration=getattr(unit, "signal_default_duration", 10),
+            adaptive_enabled=bool(getattr(unit, "adaptive_enabled", False)),
+            neural_controller_enabled=cfg.neural_controller_enabled,
+            neural_controller_mode=cfg.neural_controller_mode,
+            neural_plasticity_enabled=cfg.neural_plasticity_enabled,
+            neural_hidden_size=cfg.neural_hidden_size,
+            neural_plasticity_rate=cfg.neural_plasticity_rate,
+            neural_seed=cfg.seed,
+            design_program=target_program,
+            unit_executed_construction_enabled=True,
+        )
+        successor.max_power = template.max_power
+        successor.power_reserve = template.max_power
+        successor.SENSOR_RANGE = template.sensor_range
+        successor._generation_index = getattr(unit, "_generation_index", 0) + 1
+        if cfg.component_degradation_scale != 1.0:
+            for comp in successor.components.values():
+                comp.degradation_rate *= cfg.component_degradation_scale
+
+        # Existing M19 dimension-aware neural-state transfer from the decoded
+        # successor architecture.
+        if (cfg.neural_controller_enabled
+                and getattr(unit, "_neural_controller", None) is not None
+                and successor._neural_controller is not None):
+            nc_rng = _random.Random(
+                engine.tick_count * 17 + stable_seed("m23_transfer", unit.unit_id)
+            )
+            src_state = unit._neural_controller.state
+            new_h, new_w_in, new_w_rec, new_w_out, new_w_param, new_b, new_mask, _retained = \
+                resize_state_for_successor(
+                    src_state.hidden_state, src_state.W_in, src_state.W_rec,
+                    src_state.W_out, src_state.W_param, src_state.b_hidden,
+                    src_state.recurrent_mask, decoded, source_desc, nc_rng,
+                    weight_bound=2.0,
+                )
+            from machine_sim.agents.neural_controller import NeuralProcessingState
+
+            successor._neural_controller.set_state(NeuralProcessingState(
+                hidden_state=new_h, W_in=new_w_in, W_rec=new_w_rec,
+                W_out=new_w_out, W_param=new_w_param, b_hidden=new_b,
+                c_action=list(src_state.c_action), c_param=list(src_state.c_param),
+                recurrent_mask=new_mask,
+            ))
+
+        # Occupy the reserved target cell and register the assembled unit.
+        engine.world.grid[reserved_position].unit_id = successor.unit_id
+        successor.position = reserved_position
+        engine.register_unit(successor)
+        engine.world.release_reservation(reserved_position, owner_key)
+
+        # M22A transactional success finalization: exactly one lineage record,
+        # one success increment, one successful-fabrication tick.
+        from machine_sim.environment.fabrication import PendingFabrication
+
+        pending = PendingFabrication(
+            success=True,
+            source_unit=unit,
+            source_id=unit.unit_id,
+            successor_id=successor.unit_id,
+            placement=reserved_position,
+            template=template,
+            fabrication_tick=engine.tick_count,
+            material_cost=cfg.fabrication_material_cost,
+            power_cost=cfg.fabrication_power_cost,
+            source_generation=getattr(unit, "_generation_index", 0),
+        )
+        engine.fabrication_engine.commit_fabrication(pending)
+
+        engine._construction_cycle_trace.append({
+            "tick": engine.tick_count,
+            "unit_id": unit.unit_id,
+            "construction_cycle_index": state.construction_cycle_index,
+            "cycle_start_tick": state.cycle_start_tick,
+            "cycle_end_tick": engine.tick_count,
+            "status": "complete",
+            "successor_unit_id": successor.unit_id,
+            "successor_program_digest": target_program.program_digest(),
+            "copied_records": len(target_instructions),
+        })
+
+        engine._record_event(Event(
+            tick=engine.tick_count,
+            event_type=EventType.CONSTRUCTION_SUCCEEDED,
+            unit_id=unit.unit_id,
+            data={
+                "successor_id": successor.unit_id,
+                "construction_cycle_index": state.construction_cycle_index,
+                "copied_program_digest": target_program.program_digest(),
+                "source_program_digest": state.source_program_digest_at_begin,
+                "copy_error_count": state.copy_error_count,
+            },
+        ))
+        return {
+            "status": "complete",
+            "successor_unit_id": successor.unit_id,
+            "successor_program_digest": target_program.program_digest(),
+            "fault": None,
+        }
+
+
+
+
 
 class SimEngine:
     """Tick-based simulation engine with deterministic seeding."""
@@ -95,6 +384,10 @@ class SimEngine:
         self._design_program_execution_trace: List[Dict[str, Any]] = []
         self._design_program_distribution_trace: List[Dict[str, Any]] = []
         self._design_program_dist_snapshot_interval = max(1, config.max_ticks // 20)
+        # M23 output-only construction/copy trace storage
+        self._construction_runtime_trace: List[Dict[str, Any]] = []
+        self._program_copy_trace: List[Dict[str, Any]] = []
+        self._construction_cycle_trace: List[Dict[str, Any]] = []
         self._total_program_execution_cost: float = 0.0
         # M20: per-tick digest chain value, advanced by the run controller and
         # carried through checkpoint capture so a resumed run continues the
@@ -281,8 +574,15 @@ class SimEngine:
             if unit.is_active:
                 validate_agent_state(unit.validation_view())
 
-        # Phase 7: Fabrication (if enabled)
-        if self.config.fabrication_enabled:
+        # Phase 7: Construction
+        #
+        # M23 mode: successor construction arises ONLY from execution of each
+        # unit's inherited runtime construction program. The engine services
+        # reservations, shared-world arbitration, and transactional commits —
+        # it never initiates construction merely because a unit is eligible.
+        if self.config.unit_executed_construction_enabled:
+            self._step_unit_executed_construction()
+        elif self.config.fabrication_enabled:
             new_units = []
             for unit in self.units:
                 if unit.is_active:
@@ -1265,6 +1565,94 @@ class SimEngine:
                     "opcode_frequency": dict(sorted(opcode_counts.items())),
                     "decoded_hidden_size_histogram": dict(Counter(decoded)),
                 })
+
+    def _step_unit_executed_construction(self) -> None:
+        """M23: advance every program-backed unit's runtime construction
+        executor by a fixed bounded number of steps, servicing BEGIN
+        reservations and COMMIT assembly through engine arbitration."""
+        from machine_sim.agents.design_program import DesignExecutionBounds
+        from machine_sim.agents.program_construction import (
+            ConstructionExecutionBounds,
+            execute_runtime_step,
+            PHASE_IDLE,
+        )
+
+        cfg = self.config
+        exec_bounds = ConstructionExecutionBounds(
+            copy_records_per_step=max(1, int(cfg.copy_records_per_copy_instruction)),
+            copy_error_probability=float(cfg.copy_error_probability),
+            minimum_program_length=cfg.program_min_length,
+            maximum_program_length=cfg.program_max_length,
+        )
+        dev_bounds = DesignExecutionBounds(
+            minimum_hidden_size=cfg.minimum_hidden_size,
+            maximum_hidden_size=cfg.maximum_hidden_size,
+            initial_hidden_size=cfg.initial_hidden_size,
+            minimum_recurrence_density=cfg.minimum_recurrent_density,
+            maximum_recurrence_density=cfg.maximum_recurrent_density,
+            initial_recurrence_density=cfg.initial_recurrent_density,
+            minimum_plasticity_rate=cfg.minimum_plasticity_rate,
+            maximum_plasticity_rate=cfg.maximum_plasticity_rate,
+            initial_plasticity_rate=cfg.neural_plasticity_rate,
+            program_base_cost=cfg.program_base_cost,
+            program_per_instruction_cost=cfg.program_per_instruction_cost,
+        )
+
+        for unit in list(self.units):
+            state = getattr(unit, "_construction_state", None)
+            if state is None or not state.construction_enabled:
+                continue
+
+            # Source-inactivity policy: an unfinished cycle fails/cancels,
+            # the reservation is released, consumed costs stay consumed.
+            if not unit.is_active:
+                if state.construction_phase != PHASE_IDLE:
+                    self.world.release_reservation(
+                        state.reserved_target_position,
+                        f"{unit.unit_id}:{state.construction_cycle_index}",
+                    )
+                    state.construction_phase = PHASE_IDLE
+                    state.target_copy_buffer = []
+                    state.source_cursor = 0
+                    state.reserved_target_position = None
+                    state.provisional_successor_id = None
+                    state.last_construction_fault = "source_inactive"
+                    self._record_event(Event(
+                        tick=self.tick_count,
+                        event_type=EventType.CONSTRUCTION_FAILED,
+                        unit_id=unit.unit_id,
+                        data={"cause": "source_inactive",
+                              "construction_cycle_index": state.construction_cycle_index},
+                    ))
+                continue
+
+            services = _UnitConstructionServices(self, unit, state)
+            steps_remaining = max(1, int(cfg.runtime_construction_steps_per_tick))
+            while steps_remaining > 0 and unit.is_active:
+                steps_remaining -= 1
+                trace_row = execute_runtime_step(
+                    unit._design_program, state, services, exec_bounds,
+                    self.tick_count,
+                )
+                trace_row.update({
+                    "tick": self.tick_count,
+                    "unit_id": unit.unit_id,
+                    "construction_cycle_index": state.construction_cycle_index,
+                    "source_program_digest": (
+                        state.source_program_digest_at_begin
+                        or unit._design_program.program_digest()
+                    ),
+                })
+                self._construction_runtime_trace.append(trace_row)
+                if trace_row.get("copy_error_type"):
+                    self._program_copy_trace.append({
+                        "tick": self.tick_count,
+                        "unit_id": unit.unit_id,
+                        "construction_cycle_index": state.construction_cycle_index,
+                        "copy_error_type": trace_row["copy_error_type"],
+                        "source_cursor_after": state.source_cursor,
+                        "target_buffer_length": len(state.target_copy_buffer),
+                    })
 
     def get_neural_processing_summary(self) -> Dict[str, Any]:
         """Get neural processing summary for artifact output."""

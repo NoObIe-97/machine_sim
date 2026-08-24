@@ -26,6 +26,8 @@ class EventType(Enum):
     FABRICATION_ATTEMPTED = auto()
     FABRICATION_SUCCEEDED = auto()
     FABRICATION_FAILED = auto()
+    CONSTRUCTION_SUCCEEDED = auto()
+    CONSTRUCTION_FAILED = auto()
 
 
 @dataclass(frozen=True, slots=True)
