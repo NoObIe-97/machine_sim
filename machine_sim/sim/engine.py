@@ -82,38 +82,52 @@ class _UnitConstructionServices:
         return True
 
     def begin_unit_construction(self, current_tick: int) -> bool:
+        """Atomic BEGIN: check all prerequisites, reserve cell + capacity slot,
+        then consume costs exactly once. No half-reserved state."""
         engine = self.engine
         unit = self.unit
         state = self.state
         cfg = engine.config
 
-        # Physical prerequisites only: ability to pay, local material,
-        # placement availability, finite capacity. No cooldown timer and no
-        # legacy eligibility ratio gates in unit-executed mode.
-        if len(engine.units) >= cfg.unit_capacity:
+        if not unit.is_active:
             return False
+
+        # 1. Power sufficiency (check without consuming).
         if unit.power_reserve < cfg.fabrication_power_cost:
             return False
-        if not self._consume_local_material():
+
+        # 2. Material sufficiency (check without consuming).
+        cell = engine.world.grid.get(unit.position)
+        material_total = (
+            sum(r.quantity for r in cell.resources.values()) if cell else 0.0
+        )
+        if material_total < cfg.fabrication_material_cost:
             return False
+
+        # 3. Finite capacity including in-flight construction reservations.
+        effective_population = len(engine.units) + len(engine.world.reserved_cells)
+        if effective_population >= cfg.unit_capacity:
+            return False
+
+        # 4. Reserve target cell deterministically.
         owner_key = f"{unit.unit_id}:{state.construction_cycle_index + 1}"
         placement = engine.world.reserve_placement(unit.position, owner_key)
         if placement is None:
             return False
 
-        # Base construction power/material consumed exactly once at BEGIN.
+        # --- All checks passed and reservations acquired ---
+        # Now consume BEGIN base power/material exactly once.
         unit.power_reserve = max(
             0.0, unit.power_reserve - cfg.fabrication_power_cost
         )
+        self._consume_local_material()
 
         fabricator = engine.fabrication_engine
         fabricator._next_unit_id += 1
         provisional_id = f"unit-{fabricator._next_unit_id:04d}"
 
         state.construction_cycle_index += 1
-        state.source_program_digest_at_begin = (
-            unit._design_program.program_digest()
-        )
+        state.source_program_digest_at_begin = unit._design_program.program_digest()
         state.source_cursor = 0
         state.target_copy_buffer = []
         state.reserved_target_position = placement
@@ -121,9 +135,6 @@ class _UnitConstructionServices:
         state.cycle_start_tick = current_tick
         state.last_construction_fault = None
         state.construction_phase = _PHASE_COPYING
-        # Dedicated per-cycle copy RNG seeded from stable machine-native
-        # inputs; the Random object itself is preserved as future-causal RNG
-        # state through checkpoints.
         if state.copy_rng is not None:
             state.copy_rng.seed(
                 stable_seed(
@@ -136,6 +147,28 @@ class _UnitConstructionServices:
             )
         return True
 
+    def cancel_unit_construction(self, cause: str) -> None:
+        """Universal idempotent construction-cycle cancellation.
+
+        Releases target-cell reservation and clears runtime reservation fields
+        exactly once. Preserves already-consumed costs. Never creates success,
+        lineage, or occupancy. Calling twice is a no-op."""
+        state = self.state
+        if state.construction_phase == _PHASE_IDLE:
+            return
+        engine = self.engine
+        unit = self.unit
+        owner_key = f"{unit.unit_id}:{state.construction_cycle_index}"
+        pos = state.reserved_target_position
+        if pos is not None:
+            engine.world.release_reservation(pos, owner_key)
+        state.construction_phase = _PHASE_IDLE
+        state.target_copy_buffer = []
+        state.source_cursor = 0
+        state.reserved_target_position = None
+        state.provisional_successor_id = None
+        state.last_construction_fault = cause
+
     def commit_unit_construction(self) -> Dict[str, Any]:
         import random as _random
 
@@ -144,7 +177,11 @@ class _UnitConstructionServices:
             DesignProgramInterpreter,
             InstructionRecord,
         )
-        from machine_sim.agents.neural_architecture import resize_state_for_successor
+        from machine_sim.agents.neural_architecture import (
+            NeuralArchitectureConfig as _ArchCfg,
+            compute_fabrication_cost,
+            resize_state_for_successor,
+        )
         from machine_sim.agents.unit import MachineUnitImpl
 
         engine = self.engine
@@ -155,7 +192,8 @@ class _UnitConstructionServices:
         reserved_position = state.reserved_target_position
 
         def fail(fault: str) -> Dict[str, Any]:
-            engine.world.release_reservation(reserved_position, owner_key)
+            # M22A: release cell reservation via universal cancel.
+            self.cancel_unit_construction(fault)
             engine._construction_cycle_trace.append({
                 "tick": engine.tick_count,
                 "unit_id": unit.unit_id,
@@ -191,6 +229,15 @@ class _UnitConstructionServices:
             instructions=target_instructions,
         )
 
+        # Developmental decode execution cost: charged whenever decode is
+        # actually performed, including a decode that later fails. This is
+        # the same base + per-instruction model used by the M22 interpreter.
+        dev_decode_cost = (
+            cfg.program_base_cost
+            + cfg.program_per_instruction_cost * len(target_instructions)
+        )
+        unit.power_reserve = max(0.0, unit.power_reserve - dev_decode_cost)
+
         dev_bounds = DesignExecutionBounds(
             minimum_hidden_size=cfg.minimum_hidden_size,
             maximum_hidden_size=cfg.maximum_hidden_size,
@@ -209,8 +256,23 @@ class _UnitConstructionServices:
             program_length_bounds=(cfg.program_min_length, cfg.program_max_length),
         )
         decoded = decode_result.decoded_architecture
+
+        # Capacity recheck at COMMIT: even with a reserved slot, assert the
+        # cycle still fits within finite capacity before registering.
+        if decoded is not None and len(engine.units) >= cfg.unit_capacity:
+            return fail("capacity_exceeded_at_commit")
+
         if decoded is None:
             return fail("copied_program_decode_failed")
+
+        # Architecture fabrication/assembly cost: consumed exactly once when
+        # assembly work is actually performed (decoded successfully).
+        arch_cfg_cost = _ArchCfg(
+            neural_fabrication_hidden_unit_cost=cfg.neural_fabrication_hidden_unit_cost,
+            neural_fabrication_connection_cost=cfg.neural_fabrication_connection_cost,
+        )
+        arch_fab_cost = compute_fabrication_cost(decoded, arch_cfg_cost)
+        unit.power_reserve = max(0.0, unit.power_reserve - arch_fab_cost)
 
         template = engine.fabrication_engine._create_template(unit, engine.rng)
         source_desc = getattr(unit, "_architecture_descriptor", None)
@@ -1607,16 +1669,8 @@ class SimEngine:
             # the reservation is released, consumed costs stay consumed.
             if not unit.is_active:
                 if state.construction_phase != PHASE_IDLE:
-                    self.world.release_reservation(
-                        state.reserved_target_position,
-                        f"{unit.unit_id}:{state.construction_cycle_index}",
-                    )
-                    state.construction_phase = PHASE_IDLE
-                    state.target_copy_buffer = []
-                    state.source_cursor = 0
-                    state.reserved_target_position = None
-                    state.provisional_successor_id = None
-                    state.last_construction_fault = "source_inactive"
+                    services = _UnitConstructionServices(self, unit, state)
+                    services.cancel_unit_construction("source_inactive")
                     self._record_event(Event(
                         tick=self.tick_count,
                         event_type=EventType.CONSTRUCTION_FAILED,

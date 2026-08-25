@@ -297,13 +297,18 @@ def execute_runtime_step(
         elif state.construction_phase != PHASE_READY or (
             state.source_cursor < len(instructions)
         ):
-            state.last_construction_fault = FAULT_COMMIT_INCOMPLETE_COPY
+            # M22A: incomplete COMMIT releases reservations through the
+            # universal cancel service (releases cell + clears fields).
+            if hasattr(services, "cancel_unit_construction"):
+                services.cancel_unit_construction(FAULT_COMMIT_INCOMPLETE_COPY)
+            else:
+                state.last_construction_fault = FAULT_COMMIT_INCOMPLETE_COPY
+                state.construction_phase = PHASE_IDLE
+                state.target_copy_buffer = []
+                state.source_cursor = 0
+                state.reserved_target_position = None
+                state.provisional_successor_id = None
             trace["fault"] = FAULT_COMMIT_INCOMPLETE_COPY
-            state.construction_phase = PHASE_IDLE
-            state.target_copy_buffer = []
-            state.source_cursor = 0
-            state.reserved_target_position = None
-            state.provisional_successor_id = None
             state.runtime_program_counter += 1
         else:
             outcome = services.commit_unit_construction()
