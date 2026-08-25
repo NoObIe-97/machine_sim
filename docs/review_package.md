@@ -69,6 +69,7 @@
 - `968a40d32eccf3ca6b675c12c8f716ef62f2ac5c` — M23 commit A: runtime copy oracle/substrate
 - `dc59ea963d8fdfb29b7cf842ce6c1abfee7065c5` — M23 commit B: unit-executed construction engine integration
 - `c389c6681d373cf2e38bdf518e1c8474e00ee4f4` — M23 commit C: demonstrations, independent judge, stage-closing evidence
+- `2b40e54a222660d2c33087215067ff541440ba9a` — M23A correction: reservation/capacity/cost hardening, judge expanded to 42 live-probe checks
 
 ## Branch Name
 `feature/milestone-1`
@@ -110,7 +111,7 @@ M20_JUDGE_STATUS: PASS (subprocess-captured on optimized code, exit 0)
 M21_JUDGE_STATUS: PASS (subprocess-captured on M22 code, exit 0; oracle artifacts regenerated fresh with zero mismatches)
 
 ## M22 Judge Result
-M22_JUDGE_STATUS: PASS (31/31 checks passed on M23 code, 0 SKIP, strict exact-PASS-only;
+M22_JUDGE_STATUS: PASS (31/31 checks passed, 0 SKIP, strict exact-PASS-only;
 live probes for schema/digest determinism, interpreter bounds, instruction-set
 completeness, descriptor compatibility, ownership, variation determinism and
 mechanisms, bounds, causality, dimension-changing resize, cost monotonicity,
@@ -123,7 +124,7 @@ semantics, commit requirements, broken programs, causality, digest
 sensitivity, checkpoint roundtrip, analysis read-only; artifact checks for
 multi-generation closure and performance benchmarks)
 
-## Full M1-M22 Regression Summary
+## Full M1-M23 Regression Summary
 
 | Milestone | Key Metrics |
 |-----------|-------------|
@@ -205,7 +206,7 @@ Process-isolated pause/resume: pause at tick 650, resumed span 250,
 Decode throughput: canonical 63,397 programs/s; varied mean 60,754 programs/s
 Cost model: 0.5 base + 0.01 per executed instruction, charged at construction
 
-Tests: 614 passed. Coverage: 79.78%. Guardrails: pass.
+Tests: 614 passed. Coverage: 80.30%. Guardrails: pass.
 Judges: M14-M21 all PASS on M22 code. M22 judge: 31/31 PASS (incl. six M22A live transactional-finalization probes).
 Invalid-program accounting verified live: attempts+1, successes+0, lineage+0, units+0, occupancy+0, marker unchanged, one FAILED event, costs consumed exactly once.
 Self-replication: NOT implemented (structural probe enforced).

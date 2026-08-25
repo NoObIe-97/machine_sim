@@ -95,10 +95,36 @@ M23-disabled mode on the accepted M21 primary workload shows median ~115 t/s vs 
 
 Decode throughput with M23 enabled: canonical 63k programs/s, varied 61k programs/s.
 
-## Tests and coverage
+- Commit C (demos + judge): `c389c6681d373cf2e38bdf518e1c8474e00ee4f4`
+- M23A correction commit: `2b40e54a222660d2c33087215067ff541440ba9a`
+
+## M23A correction — reservation, capacity, cost, and judge hardening
+
+Five blockers fixed in commit `2b40e54a...`:
+
+**Blocker A** — Removed unconditional `"PASS"` assignments for `exact_success_cost_accounting_check` and `exact_failed_copy_cost_accounting_check`. Both now use live probes with exact numerical assertions. Added six new live checks: capacity_reservation_bound, failed_cycle_reservation_release, reservation_failure_no_begin_cost, capacity_never_exceeded_after_commit, plus hardened source-inactive probe (strict precondition: inability to reach copying phase is FAIL).
+
+**Blocker B** — Incomplete COMMIT in `execute_runtime_step()` now calls `services.cancel_unit_construction(fault)` which releases the world cell reservation before clearing unit state. Previously it cleared `reserved_target_position` inline without releasing the reservation.
+
+**Blocker C** — BEGIN counts in-flight construction reservations against finite capacity: `len(engine.units) + len(world.reserved_cells) >= unit_capacity` blocks new BEGINs. This ensures registered units + reserved slots never exceed capacity at any tick.
+
+**Blocker D** — BEGIN reordered to atomic check-all-then-consume:
+```text
+1. Check source active
+2. Check power sufficiency (no consumption)
+3. Check material sufficiency (no consumption)
+4. Check finite capacity including in-flight reservations
+5. Reserve target cell atomically
+6. Consume base power + material exactly once
+7. Initialize cycle state
+```
+
+**Blocker E** — Developmental decode execution cost charged at COMMIT whenever decode is attempted (including failed decode): `program_base_cost + program_per_instruction_cost * copied_program_length`. Architecture fabrication cost charged exactly once when assembly actually succeeds. Both documented; no free failed-decode path.
+
+## Tests and coverage (M23A final)
 
 - Full suite: **637 passed**, 0 failed.
-- Coverage: **80.23%** (threshold 77%).
+- Coverage: **80.30%** (threshold 77%).
 - New test files: `test_m23_construction.py` (18), `test_milestone_23_judge.py` (5).
 - Guardrails: all checks pass.
 
